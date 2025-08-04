@@ -23,7 +23,8 @@ class DGSScraper:
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
-        self.db = db_manager or DatabaseManager()
+        # Initialize database manager with the correct path (database is in parent directory)
+        self.db = db_manager or DatabaseManager(db_path='../dgs_projects.db')
         self.success_count = 0
         self.total_attempts = 0
         self.failed_projects = []

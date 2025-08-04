@@ -11,8 +11,8 @@ const PORT = 8000;
 app.use(express.json());
 app.use(cors());
 
-// Database connection
-const db = new sqlite3.Database('./dgs_projects.db');
+// Database connection - database is in project root
+const db = new sqlite3.Database(path.join(__dirname, '..', 'dgs_projects.db'));
 
 // Global variables for process management
 let currentScrapingProcess = null;
@@ -537,246 +537,21 @@ function updateCountyLastScraped(countyCode, projectCount = null) {
 // Routes
 
 // Home page
-app.get('/', async (req, res) => {
-    try {
-        const projectCount = await getProjectCount();
-        const categoryStats = await getCategoryStatistics();
-        
-        // Check if there's a current job running
-        const isRunning = currentScrapingJob !== null;
-        
-        let statusHtml = '';
-        if (isRunning && currentScrapingJob) {
-            try {
-                const jobStatus = await getJobStatus(currentScrapingJob);
-                if (jobStatus) {
-                    const progress = jobStatus.total_projects > 0 
-                        ? (jobStatus.processed_projects / jobStatus.total_projects) * 100 
-                        : 0;
-                    
-                    statusHtml = `
-                    <div class="status-box running">
-                        <h3>Scraping in Progress</h3>
-                        <p><strong>County:</strong> ${jobStatus.county_id}</p>
-                        <p><strong>Progress:</strong> ${jobStatus.processed_projects}/${jobStatus.total_projects} projects</p>
-                        <p><strong>Projects:</strong> ${jobStatus.success_count} | <strong>Errors:</strong> ${jobStatus.processed_projects - jobStatus.success_count}</p>
-                        <div class="progress-container">
-                            <div class="progress-bar">
-                                <div class="progress-fill" style="width: ${progress}%"></div>
-                            </div>
-                            <div class="progress-text">${progress.toFixed(1)}%</div>
-                        </div>
-                        <div class="button-row">
-                            <button onclick="checkStatus()" class="btn btn-secondary">Refresh Status</button>
-                            <button onclick="stopScraping()" class="btn btn-danger">Stop Scraping</button>
-                        </div>
-                    </div>
-                    `;
-                }
-            } catch (e) {
-                // Handle error silently
+app.get('/', (req, res) => {
+    res.json({
+        name: 'DGS Scraper API',
+        version: '1.0.0',
+        endpoints: {
+            stats: '/api/stats',
+            categories: '/api/categories',
+            counties: '/api/counties',
+            scraping: {
+                start: 'POST /start-scraping',
+                stop: 'POST /stop-scraping',
+                status: 'GET /status/:jobId'
             }
         }
-        
-        // Generate category statistics HTML
-        let categoryCards = '';
-        const categoryNames = {
-            'strongLeads': 'Strong Leads',
-            'weakLeads': 'Weak Leads', 
-            'watchlist': 'Watchlist',
-            'ignored': 'Ignored'
-        };
-        const categoryColors = {
-            'strongLeads': 'green',
-            'weakLeads': 'yellow',
-            'watchlist': 'blue', 
-            'ignored': 'gray'
-        };
-        
-        for (const [categoryKey, categoryName] of Object.entries(categoryNames)) {
-            const stats = categoryStats[categoryKey] || { count: 0, total_value: 0 };
-            const count = stats.count;
-            const totalValue = stats.total_value || 0;
-            const percentage = projectCount > 0 ? (count / projectCount * 100).toFixed(1) : 0;
-            const color = categoryColors[categoryKey];
-            
-            categoryCards += `
-            <div class="category-card" onclick="viewCategory('${categoryKey}')">
-                <div class="category-header">
-                    <h4>${categoryName}</h4>
-                    <span class="category-badge ${color}">${count}</span>
-                </div>
-                <div class="category-stats">
-                    <p class="percentage">${percentage}% of total</p>
-                    <p class="value">$${totalValue.toLocaleString()} total value</p>
-                </div>
-            </div>
-            `;
-        }
-        
-        const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>DGS Scraper</title>
-            <style>
-                body { font-family: Arial, sans-serif; max-width: 1200px; margin: 50px auto; padding: 20px; }
-                .btn { padding: 10px 20px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
-                .btn-primary { background: #007bff; color: white; }
-                .btn-secondary { background: #6c757d; color: white; }
-                .btn-success { background: #28a745; color: white; }
-                .btn-danger { background: #dc3545; color: white; }
-                .btn:hover { opacity: 0.8; }
-                .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-                .status-box { border: 2px solid #ddd; padding: 20px; margin: 20px 0; border-radius: 8px; }
-                .status-box.running { border-color: #007bff; background: #f8f9fa; }
-                .progress-container { position: relative; margin: 15px 0; }
-                .progress-bar { width: 100%; height: 25px; background: #e9ecef; border-radius: 12px; overflow: hidden; }
-                .progress-fill { height: 100%; background: linear-gradient(90deg, #007bff, #0056b3); border-radius: 12px; transition: width 0.3s ease; }
-                .progress-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: bold; color: #333; }
-                .form-group { margin: 15px 0; }
-                .form-group label { display: inline-block; width: 120px; font-weight: bold; }
-                .form-group input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 200px; }
-                .stats { background: #f8f9fa; padding: 15px; border-radius: 4px; margin: 20px 0; }
-                .button-row { margin-top: 15px; }
-                h1 { color: #333; }
-                h3 { color: #666; margin-bottom: 15px; }
-                .filter-section { margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
-                .filter-section h4 { margin-bottom: 10px; }
-                .filter-row { margin-bottom: 10px; }
-                .filter-row label { display: inline-block; width: 150px; font-weight: bold; }
-                .filter-row input[type="number"], .filter-row input[type="date"] { padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 150px; }
-                
-                /* Category Cards */
-                .categories-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin: 20px 0; }
-                .category-card { border: 1px solid #ddd; border-radius: 8px; padding: 15px; cursor: pointer; transition: all 0.3s; }
-                .category-card:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.1); transform: translateY(-2px); }
-                .category-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-                .category-header h4 { margin: 0; color: #333; }
-                .category-badge { padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 12px; }
-                .category-badge.green { background: #d4edda; color: #155724; }
-                .category-badge.yellow { background: #fff3cd; color: #856404; }
-                .category-badge.blue { background: #d1ecf1; color: #0c5460; }
-                .category-badge.gray { background: #e2e3e5; color: #383d41; }
-                .category-stats p { margin: 5px 0; font-size: 14px; }
-                .percentage { font-weight: bold; color: #666; }
-                .value { color: #888; }
-            </style>
-        </head>
-        <body>
-            <h1>DGS School Projects Scraper</h1>
-            
-            <div class="stats">
-                <h3>Database Statistics</h3>
-                <p>Total Projects: <strong>${projectCount}</strong></p>
-            </div>
-            
-            <div class="stats">
-                <h3>Project Categories</h3>
-                <div class="categories-grid">
-                    ${categoryCards}
-                </div>
-                <div class="button-row">
-                    <button onclick="recategorizeProjects()" class="btn btn-secondary">Recategorize All Projects</button>
-                </div>
-            </div>
-            
-            ${statusHtml}
-            
-            <div class="form-group">
-                <h3>Start New Scraping Job</h3>
-                <form onsubmit="startScraping(event)">
-                    <div class="form-group">
-                        <label for="county">County ID:</label>
-                        <input type="text" id="county" name="county" value="34" placeholder="e.g., 34 for Sacramento">
-                    </div>
-                    <button type="submit" class="btn btn-primary" ${isRunning ? 'disabled' : ''}>
-                        Start Scraping
-                    </button>
-                </form>
-            </div>
-            
-            <script>
-                async function startScraping(event) {
-                    event.preventDefault();
-                    const county = document.getElementById('county').value;
-                    
-                    try {
-                        const response = await fetch('/start-scraping', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ county_id: county })
-                        });
-                        
-                        if (response.ok) {
-                            location.reload();
-                        } else {
-                            const error = await response.json();
-                            alert('Failed to start scraping: ' + (error.error || 'Unknown error'));
-                        }
-                    } catch (error) {
-                        alert('Error: ' + error.message);
-                    }
-                }
-                
-                async function stopScraping() {
-                    if (confirm('Are you sure you want to stop the current scraping job?')) {
-                        try {
-                            const response = await fetch('/stop-scraping', {
-                                method: 'POST'
-                            });
-                            
-                            if (response.ok) {
-                                location.reload();
-                            } else {
-                                alert('Failed to stop scraping');
-                            }
-                        } catch (error) {
-                            alert('Error: ' + error.message);
-                        }
-                    }
-                }
-                
-                async function recategorizeProjects() {
-                    if (confirm('This will recategorize all projects using the new filter rules. Continue?')) {
-                        try {
-                            const response = await fetch('/api/recategorize', {
-                                method: 'POST'
-                            });
-                            
-                            if (response.ok) {
-                                const result = await response.json();
-                                alert('Successfully recategorized ' + result.count + ' projects');
-                                location.reload();
-                            } else {
-                                alert('Failed to recategorize projects');
-                            }
-                        } catch (error) {
-                            alert('Error: ' + error.message);
-                        }
-                    }
-                }
-                
-                async function checkStatus() {
-                    location.reload();
-                }
-                
-                function viewCategory(category) {
-                    window.open('/category/' + category, '_blank');
-                }
-                
-                // Auto-refresh status every 3 seconds if scraping is running
-                ${isRunning ? 'setInterval(checkStatus, 3000);' : ''}
-            </script>
-        </body>
-        </html>
-        `;
-        
-        res.send(html);
-    } catch (error) {
-        console.error('Error in home route:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+    });
 });
 
 // API Routes
@@ -923,10 +698,10 @@ app.post('/api/counties/:countyCode/scrape', async (req, res) => {
         // Create new job and start scraping
         const jobId = await createScrapingJob(countyCode);
         
-        // Start scraping process (same as existing logic)
+        // Start scraping process with updated path
         currentScrapingJob = jobId;
-        currentScrapingProcess = spawn('python3', ['dgs_scraper.py', countyCode, `--job-id=${jobId}`], {
-            cwd: __dirname,
+        currentScrapingProcess = spawn('python3', [path.join(__dirname, '..', 'scraping', 'dgs_scraper.py'), countyCode, `--job-id=${jobId}`], {
+            cwd: path.join(__dirname, '..'),
             stdio: 'pipe'
         });
         
@@ -939,115 +714,6 @@ app.post('/api/counties/:countyCode/scrape', async (req, res) => {
         
     } catch (error) {
         console.error('Error starting county scrape:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-app.get('/category/:category', async (req, res) => {
-    try {
-        const { category } = req.params;
-        
-        if (!['strongLeads', 'weakLeads', 'watchlist', 'ignored'].includes(category)) {
-            return res.status(400).json({ error: 'Invalid category' });
-        }
-        
-        const projects = await getProjectsByCategory(category, 50);
-        const categoryStats = await getCategoryStatistics();
-        const stats = categoryStats[category] || {};
-        
-        const categoryNames = {
-            'strongLeads': 'Strong Leads',
-            'weakLeads': 'Weak Leads',
-            'watchlist': 'Watchlist',
-            'ignored': 'Ignored'
-        };
-        
-        const categoryName = categoryNames[category] || category;
-        
-        // Generate project rows
-        let projectRows = '';
-        projects.forEach(project => {
-            const estimatedAmt = project['Estimated Amt'] || 'N/A';
-            const receivedDate = project['Received Date'] || 'N/A';
-            const approvedDate = project['Approved Date'] || 'N/A';
-            const score = project.score || 0;
-            
-            projectRows += `
-            <tr>
-                <td>${project.project_name || 'N/A'}</td>
-                <td>${project.district_name || 'N/A'}</td>
-                <td>${project.county_id || 'N/A'}</td>
-                <td>${estimatedAmt}</td>
-                <td>${receivedDate}</td>
-                <td>${approvedDate}</td>
-                <td>${score}</td>
-            </tr>
-            `;
-        });
-        
-        const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>${categoryName} - DGS Scraper</title>
-            <style>
-                body { font-family: Arial, sans-serif; max-width: 1200px; margin: 20px auto; padding: 20px; }
-                h1 { color: #333; }
-                .stats { background: #f8f9fa; padding: 15px; border-radius: 4px; margin: 20px 0; }
-                .stats p { margin: 5px 0; }
-                table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-                th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-                th { background-color: #f8f9fa; font-weight: bold; }
-                tr:hover { background-color: #f5f5f5; }
-                .btn { padding: 10px 20px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; }
-                .btn-secondary { background: #6c757d; color: white; }
-                .filter-info { background: #e9ecef; padding: 10px; border-radius: 4px; margin: 10px 0; }
-            </style>
-        </head>
-        <body>
-            <h1>${categoryName}</h1>
-            
-            <div class="filter-info">
-                <strong>Filter Rules:</strong>
-                ${category === 'strongLeads' ? 'Projects ≥ $2M and received after 2023' : ''}
-                ${category === 'weakLeads' ? 'Projects ≥ $1M and received after 2020 (not strong leads)' : ''}
-                ${category === 'watchlist' ? 'Projects ≥ $100K and received after 2018 (not strong/weak)' : ''}
-                ${category === 'ignored' ? 'All other projects' : ''}
-            </div>
-            
-            <div class="stats">
-                <p><strong>Total Projects:</strong> ${stats.count || 0}</p>
-                <p><strong>Total Value:</strong> $${(stats.total_value || 0).toLocaleString()}</p>
-                <p><strong>Average Value:</strong> $${(stats.avg_value || 0).toLocaleString()}</p>
-            </div>
-            
-            <a href="/" class="btn btn-secondary">Back to Dashboard</a>
-            
-            <table>
-                <thead>
-                    <tr>
-                        <th>Project Name</th>
-                        <th>District</th>
-                        <th>County</th>
-                        <th>Estimated Amount</th>
-                        <th>Received Date</th>
-                        <th>Approved Date</th>
-                        <th>Match</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${projectRows}
-                </tbody>
-            </table>
-            
-            ${projects.length >= 50 ? `<p><em>Showing first 50 projects. Total: ${stats.count || 0}</em></p>` : ''}
-        </body>
-        </html>
-        `;
-        
-        res.send(html);
-    } catch (error) {
-        console.error('Error in category view:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -1065,8 +731,8 @@ app.post('/start-scraping', async (req, res) => {
         const jobId = await createScrapingJob(county_id);
         currentScrapingJob = jobId;
         
-        // Start Python scraper in background
-        currentScrapingProcess = spawn('python', ['dgs_scraper.py'], {
+        // Start Python scraper in background - updated path
+        currentScrapingProcess = spawn('python', [path.join(__dirname, '..', 'scraping', 'dgs_scraper.py')], {
             env: { ...process.env, COUNTY_ID: county_id, JOB_ID: jobId.toString() }
         });
         

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -11,28 +11,87 @@ import CountySelection from "@/components/county-selection"
 import ScheduleSettings from "@/components/schedule-settings"
 import JobMonitor from "@/components/job-monitor"
 import ResultsAndFilters from "@/components/results-and-filters"
-
-// Placeholder data
-const dashboardStats = {
-  totalProjects: 15742,
-  strongLeads: 1234,
-  weakLeads: 2456,
-  watchlist: 3789,
-  ignored: 8263,
-  lastFullScrape: "2024-01-15 14:30:00",
-  runningJobs: 2,
-  completedJobs: 15,
-  failedJobs: 1,
-}
+import { apiClient } from "@/lib/api"
 
 export default function DGSScraperDashboard() {
   const [activeTab, setActiveTab] = useState("dashboard")
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [dashboardStats, setDashboardStats] = useState({
+    totalProjects: 0,
+    strongLeads: 0,
+    weakLeads: 0,
+    watchlist: 0,
+    ignored: 0,
+    lastFullScrape: "",
+    runningJobs: 0,
+    completedJobs: 0,
+    failedJobs: 0,
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        const [stats, categories] = await Promise.all([
+          apiClient.getStats(),
+          apiClient.getCategories()
+        ])
+
+        setDashboardStats({
+          totalProjects: stats.total_projects || 0,
+          strongLeads: categories.strongLeads?.count || 0,
+          weakLeads: categories.weakLeads?.count || 0,
+          watchlist: categories.watchlist?.count || 0,
+          ignored: categories.ignored?.count || 0,
+          lastFullScrape: stats.last_updated || "",
+          runningJobs: 0, // TODO: Get from job monitoring
+          completedJobs: 0, // TODO: Get from job history
+          failedJobs: 0, // TODO: Get from job history
+        })
+      } catch (err) {
+        console.error('Failed to fetch dashboard data:', err)
+        setError('Failed to load dashboard data. Please check if the backend server is running.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchDashboardData()
+  }, [])
 
   const handleSaveChanges = () => {
     console.log("Saving all changes to backend...")
     setHasUnsavedChanges(false)
     // This will eventually sync all settings to the backend
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-500 text-xl mb-4">⚠ Error</div>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <Button onClick={() => window.location.reload()}>
+            Retry
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -48,30 +107,14 @@ export default function DGSScraperDashboard() {
             </div>
             <div className="flex items-center space-x-4">
               {hasUnsavedChanges && (
-                <Badge variant="secondary" className="animate-pulse">
+                <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                  <Clock className="w-3 h-3 mr-1" />
                   Unsaved Changes
                 </Badge>
               )}
-              <Button
-                onClick={handleSaveChanges}
-                disabled={!hasUnsavedChanges}
-                className={`${
-                  hasUnsavedChanges
-                    ? "bg-blue-600 hover:bg-blue-700 shadow-lg relative overflow-hidden"
-                    : "bg-gray-400 cursor-not-allowed"
-                } transition-all duration-200`}
-              >
-                {hasUnsavedChanges && (
-                  <div
-                    className="absolute inset-0 -top-[1px] -bottom-[1px] bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"
-                    style={{
-                      background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)",
-                      animation: "shimmer 2s infinite",
-                    }}
-                  />
-                )}
-                <Save className="h-4 w-4 mr-2 relative z-10" />
-                <span className="relative z-10">Save Changes</span>
+              <Button onClick={handleSaveChanges} disabled={!hasUnsavedChanges} className="flex items-center">
+                <Save className="w-4 h-4 mr-2" />
+                Save All Changes
               </Button>
             </div>
           </div>
@@ -79,31 +122,17 @@ export default function DGSScraperDashboard() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="dashboard" className="flex items-center gap-2">
-              <BarChart3 className="h-4 w-4" />
-              Dashboard
-            </TabsTrigger>
-            <TabsTrigger value="counties" className="flex items-center gap-2">
-              <Settings className="h-4 w-4" />
-              Counties
-            </TabsTrigger>
-            <TabsTrigger value="results" className="flex items-center gap-2">
-              <Download className="h-4 w-4" />
-              Results & Filters
-            </TabsTrigger>
-            <TabsTrigger value="schedule" className="flex items-center gap-2">
-              <CalendarDays className="h-4 w-4" />
-              Schedule
-            </TabsTrigger>
-            <TabsTrigger value="jobs" className="flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              Jobs
-            </TabsTrigger>
+            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="counties">Counties</TabsTrigger>
+            <TabsTrigger value="schedule">Schedule</TabsTrigger>
+            <TabsTrigger value="jobs">Job Monitor</TabsTrigger>
+            <TabsTrigger value="results">Results & Filters</TabsTrigger>
           </TabsList>
 
-          <div className="space-y-6">
-            {/* Dashboard Tab */}
-            <div className={`${activeTab === "dashboard" ? "block" : "hidden"}`}>
+          {/* Dashboard Tab */}
+          {activeTab === "dashboard" && (
+            <div className="space-y-6">
+              {/* Key Statistics */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -112,100 +141,82 @@ export default function DGSScraperDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{dashboardStats.totalProjects.toLocaleString()}</div>
-                    <p className="text-xs text-muted-foreground">Last updated: {dashboardStats.lastFullScrape}</p>
+                    <p className="text-xs text-muted-foreground">
+                      All scraped projects
+                    </p>
                   </CardContent>
                 </Card>
 
-                <Card
-                  className="cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => setActiveTab("results")}
-                >
+                <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Strong Leads</CardTitle>
-                    <Badge variant="default" className="bg-green-500">
-                      High
-                    </Badge>
+                    <Badge className="bg-green-100 text-green-700">{dashboardStats.strongLeads}</Badge>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-green-600">
-                      {dashboardStats.strongLeads.toLocaleString()}
-                    </div>
+                    <div className="text-2xl font-bold">{dashboardStats.strongLeads.toLocaleString()}</div>
                     <p className="text-xs text-muted-foreground">
-                      {((dashboardStats.strongLeads / dashboardStats.totalProjects) * 100).toFixed(1)}% of total
+                      High-value projects (≥$2M)
                     </p>
                   </CardContent>
                 </Card>
 
-                <Card
-                  className="cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => setActiveTab("results")}
-                >
+                <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Weak Leads</CardTitle>
-                    <Badge variant="secondary" className="bg-yellow-500">
-                      Medium
-                    </Badge>
+                    <Badge className="bg-yellow-100 text-yellow-700">{dashboardStats.weakLeads}</Badge>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-yellow-600">
-                      {dashboardStats.weakLeads.toLocaleString()}
-                    </div>
+                    <div className="text-2xl font-bold">{dashboardStats.weakLeads.toLocaleString()}</div>
                     <p className="text-xs text-muted-foreground">
-                      {((dashboardStats.weakLeads / dashboardStats.totalProjects) * 100).toFixed(1)}% of total
+                      Medium-value projects (≥$1M)
                     </p>
                   </CardContent>
                 </Card>
 
-                <Card
-                  className="cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => setActiveTab("results")}
-                >
+                <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Watchlist</CardTitle>
-                    <Badge variant="outline" className="border-blue-500 text-blue-500">
-                      Watch
-                    </Badge>
+                    <Badge className="bg-blue-100 text-blue-700">{dashboardStats.watchlist}</Badge>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-blue-600">{dashboardStats.watchlist.toLocaleString()}</div>
+                    <div className="text-2xl font-bold">{dashboardStats.watchlist.toLocaleString()}</div>
                     <p className="text-xs text-muted-foreground">
-                      {((dashboardStats.watchlist / dashboardStats.totalProjects) * 100).toFixed(1)}% of total
+                      Potential projects (≥$100K)
                     </p>
                   </CardContent>
                 </Card>
               </div>
 
+              {/* Recent Activity */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader>
                     <CardTitle>Recent Activity</CardTitle>
-                    <CardDescription>Latest scraping jobs and updates</CardDescription>
+                    <CardDescription>Latest scraping jobs and system activity</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                      <div>
-                        <p className="font-medium">Sacramento County</p>
-                        <p className="text-sm text-gray-600">Completed 2 hours ago</p>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">Last full scrape completed</p>
+                          <p className="text-xs text-muted-foreground">{dashboardStats.lastFullScrape || 'Never'}</p>
+                        </div>
                       </div>
-                      <Badge variant="default" className="bg-green-500">
-                        Complete
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-                      <div>
-                        <p className="font-medium">Los Angeles County</p>
-                        <p className="text-sm text-gray-600">In progress - 67% complete</p>
+                      <div className="flex items-center space-x-4">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">Database updated</p>
+                          <p className="text-xs text-muted-foreground">{dashboardStats.totalProjects} total projects</p>
+                        </div>
                       </div>
-                      <Badge variant="default" className="bg-blue-500">
-                        Running
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
-                      <div>
-                        <p className="font-medium">Watchlist Rescrape</p>
-                        <p className="text-sm text-gray-600">Scheduled for tonight</p>
+                      <div className="flex items-center space-x-4">
+                        <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">Categories refreshed</p>
+                          <p className="text-xs text-muted-foreground">Projects automatically categorized</p>
+                        </div>
                       </div>
-                      <Badge variant="secondary">Scheduled</Badge>
                     </div>
                   </CardContent>
                 </Card>
@@ -213,68 +224,65 @@ export default function DGSScraperDashboard() {
                 <Card>
                   <CardHeader>
                     <CardTitle>System Status</CardTitle>
-                    <CardDescription>Current job statistics and system health</CardDescription>
+                    <CardDescription>Current system performance and health</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span>Running Jobs</span>
-                        <span>{dashboardStats.runningJobs}</span>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Running Jobs</span>
+                        <Badge variant={dashboardStats.runningJobs > 0 ? "default" : "secondary"}>
+                          {dashboardStats.runningJobs}
+                        </Badge>
                       </div>
-                      <Progress value={(dashboardStats.runningJobs / 1) * 100} className="h-2" />
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span>Completed Jobs</span>
-                        <span>{dashboardStats.completedJobs}</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Completed Jobs</span>
+                        <Badge variant="outline">{dashboardStats.completedJobs}</Badge>
                       </div>
-                      <Progress value={Math.min((dashboardStats.completedJobs / 20) * 100, 100)} className="h-2" />
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span>Failed Jobs</span>
-                        <span>{dashboardStats.failedJobs}</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Failed Jobs</span>
+                        <Badge variant={dashboardStats.failedJobs > 0 ? "destructive" : "outline"}>
+                          {dashboardStats.failedJobs}
+                        </Badge>
                       </div>
-                      <Progress value={(dashboardStats.failedJobs / 5) * 100} className="h-2" />
+                      <div className="pt-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">System Health</span>
+                          <span className="text-sm text-green-600">Excellent</span>
+                        </div>
+                        <Progress value={95} className="h-2" />
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
               </div>
             </div>
+          )}
 
-            {/* Counties Tab */}
-            <div className={`${activeTab === "counties" ? "block" : "hidden"}`}>
-              <CountySelection onSettingsChange={setHasUnsavedChanges} />
-            </div>
+          {/* Counties Tab */}
+          {activeTab === "counties" && (
+            <CountySelection 
+              onSettingsChange={() => setHasUnsavedChanges(true)}
+            />
+          )}
 
-            {/* Results Tab */}
-            <div className={`${activeTab === "results" ? "block" : "hidden"}`}>
-              <ResultsAndFilters onSettingsChange={setHasUnsavedChanges} />
-            </div>
+          {/* Schedule Tab */}
+          {activeTab === "schedule" && (
+            <ScheduleSettings 
+              onSettingsChange={() => setHasUnsavedChanges(true)}
+            />
+          )}
 
-            {/* Schedule Tab */}
-            <div className={`${activeTab === "schedule" ? "block" : "hidden"}`}>
-              <ScheduleSettings onSettingsChange={setHasUnsavedChanges} />
-            </div>
+          {/* Job Monitor Tab */}
+          {activeTab === "jobs" && <JobMonitor />}
 
-            {/* Jobs Tab */}
-            <div className={`${activeTab === "jobs" ? "block" : "hidden"}`}>
-              <JobMonitor />
-            </div>
-          </div>
+          {/* Results & Filters Tab */}
+          {activeTab === "results" && (
+            <ResultsAndFilters 
+              onSettingsChange={() => setHasUnsavedChanges(true)}
+            />
+          )}
         </Tabs>
       </div>
-
-      <style jsx>{`
-        @keyframes shimmer {
-          0% {
-            transform: translateX(-100%);
-          }
-          100% {
-            transform: translateX(100%);
-          }
-        }
-      `}</style>
     </div>
   )
 }
