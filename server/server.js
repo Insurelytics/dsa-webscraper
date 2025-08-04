@@ -661,6 +661,35 @@ app.get('/api/categories', async (req, res) => {
     }
 });
 
+app.get('/api/counties/with-data', async (req, res) => {
+    try {
+        db.all(`
+            SELECT c.name, c.code, COUNT(p.id) as project_count
+            FROM counties c
+            INNER JOIN projects p ON p.county_id = c.code
+            GROUP BY c.id, c.name, c.code
+            ORDER BY project_count DESC
+        `, (err, rows) => {
+            if (err) {
+                console.error('Error getting counties with data:', err);
+                res.status(500).json({ error: 'Internal server error' });
+                return;
+            }
+            
+            const counties = rows.map(row => ({
+                name: row.name,
+                code: row.code,
+                project_count: row.project_count
+            }));
+            
+            res.json(counties);
+        });
+    } catch (error) {
+        console.error('Error getting counties with data:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 app.get('/api/categories/:category/projects', async (req, res) => {
     try {
         const { category } = req.params;
