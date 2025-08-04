@@ -13,6 +13,8 @@ import uvicorn
 import io
 import os
 from contextlib import asynccontextmanager
+from pydantic import BaseModel
+from typing import Dict, Optional
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,6 +33,12 @@ db = DatabaseManager()
 current_scraping_process = None
 current_scraping_job = None
 scraping_lock = threading.Lock()
+
+class ScoringCriteriaUpdate(BaseModel):
+    min_amount: Optional[int] = 0
+    received_after: Optional[str] = None
+    approved_after: Optional[str] = None
+    keywords: Optional[str] = ""
 
 def cleanup_processes():
     """Clean up any running scraping processes"""
@@ -101,6 +109,7 @@ scraper.scrape_county('{county_id}', job_id={job_id})
 async def home():
     """Main page with scraping controls and status"""
     project_count = db.get_project_count()
+    category_stats = db.get_category_statistics()
     
     # Check if there's a current job running
     with scraping_lock:
@@ -135,13 +144,48 @@ async def home():
             </div>
             """
     
+    # Generate category statistics HTML
+    category_cards = ""
+    category_names = {
+        'strongLeads': 'Strong Leads',
+        'weakLeads': 'Weak Leads', 
+        'watchlist': 'Watchlist',
+        'ignored': 'Ignored'
+    }
+    category_colors = {
+        'strongLeads': 'green',
+        'weakLeads': 'yellow',
+        'watchlist': 'blue', 
+        'ignored': 'gray'
+    }
+    
+    for category_key, category_name in category_names.items():
+        stats = category_stats.get(category_key, {'count': 0, 'total_value': 0})
+        count = stats['count']
+        total_value = stats['total_value']
+        percentage = (count / project_count * 100) if project_count > 0 else 0
+        color = category_colors[category_key]
+        
+        category_cards += f"""
+        <div class="category-card" onclick="viewCategory('{category_key}')">
+            <div class="category-header">
+                <h4>{category_name}</h4>
+                <span class="category-badge {color}">{count}</span>
+            </div>
+            <div class="category-stats">
+                <p class="percentage">{percentage:.1f}% of total</p>
+                <p class="value">${total_value:,.0f} total value</p>
+            </div>
+        </div>
+        """
+    
     html = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <title>DGS Scraper</title>
         <style>
-            body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }}
+            body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 50px auto; padding: 20px; }}
             .btn {{ padding: 10px 20px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }}
             .btn-primary {{ background: #007bff; color: white; }}
             .btn-secondary {{ background: #6c757d; color: white; }}
@@ -167,6 +211,21 @@ async def home():
             .filter-row {{ margin-bottom: 10px; }}
             .filter-row label {{ display: inline-block; width: 150px; font-weight: bold; }}
             .filter-row input[type="number"], .filter-row input[type="date"] {{ padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 150px; }}
+            
+            /* Category Cards */
+            .categories-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin: 20px 0; }}
+            .category-card {{ border: 1px solid #ddd; border-radius: 8px; padding: 15px; cursor: pointer; transition: all 0.3s; }}
+            .category-card:hover {{ box-shadow: 0 4px 8px rgba(0,0,0,0.1); transform: translateY(-2px); }}
+            .category-header {{ display: flex; justify-content: between; align-items: center; margin-bottom: 10px; }}
+            .category-header h4 {{ margin: 0; color: #333; }}
+            .category-badge {{ padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 12px; }}
+            .category-badge.green {{ background: #d4edda; color: #155724; }}
+            .category-badge.yellow {{ background: #fff3cd; color: #856404; }}
+            .category-badge.blue {{ background: #d1ecf1; color: #0c5460; }}
+            .category-badge.gray {{ background: #e2e3e5; color: #383d41; }}
+            .category-stats p {{ margin: 5px 0; font-size: 14px; }}
+            .percentage {{ font-weight: bold; color: #666; }}
+            .value {{ color: #888; }}
         </style>
     </head>
     <body>
@@ -175,6 +234,13 @@ async def home():
         <div class="stats">
             <h3>Database Statistics</h3>
             <p>Total Projects: <strong>{project_count}</strong></p>
+        </div>
+        
+        <div class="stats">
+            <h3>Project Categories</h3>
+            <div class="categories-grid">
+                {category_cards}
+            </div>
         </div>
         
         {status_html}
@@ -277,6 +343,10 @@ async def home():
                 location.reload();
             }}
             
+            function viewCategory(category) {{
+                window.open('/category/' + category, '_blank');
+            }}
+            
             // Auto-refresh status every 3 seconds if scraping is running
             {"setInterval(checkStatus, 3000);" if is_running else ""}
         </script>
@@ -372,8 +442,144 @@ async def get_stats():
     """Get database statistics"""
     return {
         "total_projects": db.get_project_count(),
+        "category_stats": db.get_category_statistics(),
         "last_updated": datetime.now().isoformat()
     }
+
+# NEW CATEGORIZATION ENDPOINTS
+
+@app.get("/api/categories")
+async def get_categories():
+    """Get category statistics"""
+    return db.get_category_statistics()
+
+@app.get("/api/categories/{category}/projects")
+async def get_category_projects(category: str, limit: int = Query(100)):
+    """Get projects for a specific category"""
+    if category not in ['strongLeads', 'weakLeads', 'watchlist', 'ignored']:
+        raise HTTPException(status_code=400, detail="Invalid category")
+    
+    projects = db.get_projects_by_category(category, limit)
+    return {
+        "category": category,
+        "count": len(projects),
+        "projects": projects
+    }
+
+@app.get("/category/{category}", response_class=HTMLResponse)
+async def view_category(category: str):
+    """View projects in a specific category"""
+    if category not in ['strongLeads', 'weakLeads', 'watchlist', 'ignored']:
+        raise HTTPException(status_code=400, detail="Invalid category")
+    
+    projects = db.get_projects_by_category(category, 50)  # Limit to 50 for display
+    category_stats = db.get_category_statistics()
+    stats = category_stats.get(category, {})
+    
+    category_names = {
+        'strongLeads': 'Strong Leads',
+        'weakLeads': 'Weak Leads',
+        'watchlist': 'Watchlist',
+        'ignored': 'Ignored'
+    }
+    
+    category_name = category_names.get(category, category)
+    
+    # Generate project rows
+    project_rows = ""
+    for project in projects:
+        estimated_amt = project.get('Estimated Amt', 'N/A')
+        received_date = project.get('Received Date', 'N/A')
+        approved_date = project.get('Approved Date', 'N/A')
+        score = project.get('score', 0)
+        
+        project_rows += f"""
+        <tr>
+            <td>{project.get('project_name', 'N/A')}</td>
+            <td>{project.get('district_name', 'N/A')}</td>
+            <td>{project.get('county_id', 'N/A')}</td>
+            <td>{estimated_amt}</td>
+            <td>{received_date}</td>
+            <td>{approved_date}</td>
+            <td>{score}</td>
+        </tr>
+        """
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>{category_name} - DGS Scraper</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 20px auto; padding: 20px; }}
+            h1 {{ color: #333; }}
+            .stats {{ background: #f8f9fa; padding: 15px; border-radius: 4px; margin: 20px 0; }}
+            .stats p {{ margin: 5px 0; }}
+            table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
+            th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }}
+            th {{ background-color: #f8f9fa; font-weight: bold; }}
+            tr:hover {{ background-color: #f5f5f5; }}
+            .btn {{ padding: 10px 20px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; }}
+            .btn-secondary {{ background: #6c757d; color: white; }}
+        </style>
+    </head>
+    <body>
+        <h1>{category_name}</h1>
+        
+        <div class="stats">
+            <p><strong>Total Projects:</strong> {stats.get('count', 0)}</p>
+            <p><strong>Total Value:</strong> ${stats.get('total_value', 0):,.0f}</p>
+            <p><strong>Average Value:</strong> ${stats.get('avg_value', 0):,.0f}</p>
+            <p><strong>Average Score:</strong> {stats.get('avg_score', 0):.1f}</p>
+        </div>
+        
+        <a href="/" class="btn btn-secondary">Back to Dashboard</a>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Project Name</th>
+                    <th>District</th>
+                    <th>County</th>
+                    <th>Estimated Amount</th>
+                    <th>Received Date</th>
+                    <th>Approved Date</th>
+                    <th>Score</th>
+                </tr>
+            </thead>
+            <tbody>
+                {project_rows}
+            </tbody>
+        </table>
+        
+        {f"<p><em>Showing first 50 projects. Total: {stats.get('count', 0)}</em></p>" if len(projects) >= 50 else ""}
+    </body>
+    </html>
+    """
+    return html
+
+@app.get("/api/scoring-criteria")
+async def get_scoring_criteria():
+    """Get all scoring criteria"""
+    return db.get_scoring_criteria()
+
+@app.put("/api/scoring-criteria/{category}")
+async def update_scoring_criteria(category: str, criteria: ScoringCriteriaUpdate):
+    """Update scoring criteria for a category"""
+    if category not in ['strongLeads', 'weakLeads', 'watchlist', 'ignored']:
+        raise HTTPException(status_code=400, detail="Invalid category")
+    
+    success = db.update_scoring_criteria(category, criteria.dict())
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update criteria")
+    
+    return {"message": f"Updated criteria for {category}"}
+
+@app.post("/api/recategorize")
+async def recategorize_projects():
+    """Recategorize all projects based on current criteria"""
+    count = db.recategorize_all_projects()
+    return {"message": f"Recategorized {count} projects"}
 
 if __name__ == "__main__":
     try:
