@@ -29,6 +29,7 @@ export default function DGSScraperDashboard() {
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [saveInProgress, setSaveInProgress] = useState(false)
 
   useEffect(() => {
     const fetchDashboardData = async (silent = false) => {
@@ -76,10 +77,24 @@ export default function DGSScraperDashboard() {
     return () => clearInterval(interval)
   }, [])
 
-  const handleSaveChanges = () => {
+  const handleSaveChanges = async () => {
     console.log("Saving all changes to backend...")
-    setHasUnsavedChanges(false)
-    // This will eventually sync all settings to the backend
+    setSaveInProgress(true)
+    
+    try {
+      // Call the appropriate save function based on active tab
+      if (activeTab === "results" && (window as any).resultsAndFiltersSave) {
+        await (window as any).resultsAndFiltersSave();
+      }
+      // Add other tab save functions here as needed
+      
+      setHasUnsavedChanges(false)
+    } catch (error) {
+      console.error('Error saving changes:', error)
+      alert('Failed to save changes. Please try again.')
+    } finally {
+      setSaveInProgress(false)
+    }
   }
 
   if (loading) {
@@ -125,9 +140,9 @@ export default function DGSScraperDashboard() {
                   Unsaved Changes
                 </Badge>
               )}
-              <Button onClick={handleSaveChanges} disabled={!hasUnsavedChanges} className="flex items-center">
+              <Button onClick={handleSaveChanges} disabled={!hasUnsavedChanges || saveInProgress} className="flex items-center">
                 <Save className="w-4 h-4 mr-2" />
-                Save All Changes
+                {saveInProgress ? 'Saving...' : 'Save All Changes'}
               </Button>
             </div>
           </div>
@@ -168,7 +183,7 @@ export default function DGSScraperDashboard() {
                   <CardContent>
                     <div className="text-2xl font-bold">{dashboardStats.strongLeads.toLocaleString()}</div>
                     <p className="text-xs text-muted-foreground">
-                      High-value projects (≥$2M)
+                      High-value projects
                     </p>
                   </CardContent>
                 </Card>
@@ -181,7 +196,7 @@ export default function DGSScraperDashboard() {
                   <CardContent>
                     <div className="text-2xl font-bold">{dashboardStats.weakLeads.toLocaleString()}</div>
                     <p className="text-xs text-muted-foreground">
-                      Medium-value projects (≥$1M)
+                      Medium-value projects
                     </p>
                   </CardContent>
                 </Card>
@@ -194,7 +209,7 @@ export default function DGSScraperDashboard() {
                   <CardContent>
                     <div className="text-2xl font-bold">{dashboardStats.watchlist.toLocaleString()}</div>
                     <p className="text-xs text-muted-foreground">
-                      Potential projects (≥$100K)
+                      Potential projects
                     </p>
                   </CardContent>
                 </Card>

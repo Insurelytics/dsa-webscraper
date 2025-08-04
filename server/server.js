@@ -260,34 +260,128 @@ function parseDate(dateStr) {
     return null;
 }
 
-function categorizeProject(projectData) {
+// Scoring Criteria Management Functions
+
+function getAllScoringCriteria() {
+    return new Promise((resolve, reject) => {
+        db.all('SELECT * FROM scoring_criteria ORDER BY category', (err, rows) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            
+            // Convert to object format expected by frontend
+            const criteria = {};
+            rows.forEach(row => {
+                criteria[row.category] = {
+                    minAmount: row.min_amount,
+                    receivedAfter: row.received_after
+                };
+            });
+            
+            // If no criteria exist, return defaults for strongLeads, weakLeads, watchlist
+            if (Object.keys(criteria).length === 0) {
+                criteria.strongLeads = { minAmount: 2000000, receivedAfter: "2023-01-01" };
+                criteria.weakLeads = { minAmount: 1000000, receivedAfter: "2020-01-01" };
+                criteria.watchlist = { minAmount: 100000, receivedAfter: "2018-01-01" };
+            }
+            
+            resolve(criteria);
+        });
+    });
+}
+
+function updateScoringCriteria(criteria) {
+    return new Promise((resolve, reject) => {
+        const promises = [];
+        
+        // Only update criteria for strongLeads, weakLeads, and watchlist
+        const validCategories = ['strongLeads', 'weakLeads', 'watchlist'];
+        
+        validCategories.forEach(category => {
+            if (criteria[category]) {
+                const promise = new Promise((res, rej) => {
+                    db.run(`
+                        INSERT OR REPLACE INTO scoring_criteria 
+                        (category, min_amount, received_after, updated_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    `, [category, criteria[category].minAmount, criteria[category].receivedAfter], (err) => {
+                        if (err) rej(err);
+                        else res();
+                    });
+                });
+                promises.push(promise);
+            }
+        });
+        
+        Promise.all(promises)
+            .then(() => resolve())
+            .catch(reject);
+    });
+}
+
+async function categorizeProject(projectData) {
     const estimatedAmt = extractAmount(projectData['Estimated Amt']) || 0;
     const receivedDate = parseDate(projectData['Received Date']);
     
-    // Simple filter matching (no scoring)
-    // Strong Leads: Over $2M and after 2023
-    if (estimatedAmt >= 2000000 && receivedDate && receivedDate >= new Date('2023-01-01')) {
-        return { category: 'strongLeads', score: 1 };
+    try {
+        // Get current criteria from database
+        const criteria = await getAllScoringCriteria();
+        
+        // Check strongLeads first
+        if (criteria.strongLeads) {
+            const minAmount = criteria.strongLeads.minAmount || 0;
+            const receivedAfter = criteria.strongLeads.receivedAfter ? new Date(criteria.strongLeads.receivedAfter) : null;
+            
+            if (estimatedAmt >= minAmount && (!receivedAfter || (receivedDate && receivedDate >= receivedAfter))) {
+                return { category: 'strongLeads', score: 1 };
+            }
+        }
+        
+        // Check weakLeads next
+        if (criteria.weakLeads) {
+            const minAmount = criteria.weakLeads.minAmount || 0;
+            const receivedAfter = criteria.weakLeads.receivedAfter ? new Date(criteria.weakLeads.receivedAfter) : null;
+            
+            if (estimatedAmt >= minAmount && (!receivedAfter || (receivedDate && receivedDate >= receivedAfter))) {
+                return { category: 'weakLeads', score: 1 };
+            }
+        }
+        
+        // Check watchlist next
+        if (criteria.watchlist) {
+            const minAmount = criteria.watchlist.minAmount || 0;
+            const receivedAfter = criteria.watchlist.receivedAfter ? new Date(criteria.watchlist.receivedAfter) : null;
+            
+            if (estimatedAmt >= minAmount && (!receivedAfter || (receivedDate && receivedDate >= receivedAfter))) {
+                return { category: 'watchlist', score: 1 };
+            }
+        }
+        
+        // Everything else goes to ignored
+        return { category: 'ignored', score: 0 };
+        
+    } catch (error) {
+        console.error('Error getting criteria, falling back to defaults:', error);
+        
+        // Fallback to hardcoded values if database fails
+        if (estimatedAmt >= 2000000 && receivedDate && receivedDate >= new Date('2023-01-01')) {
+            return { category: 'strongLeads', score: 1 };
+        }
+        if (estimatedAmt >= 1000000 && receivedDate && receivedDate >= new Date('2020-01-01')) {
+            return { category: 'weakLeads', score: 1 };
+        }
+        if (estimatedAmt >= 100000 && receivedDate && receivedDate >= new Date('2018-01-01')) {
+            return { category: 'watchlist', score: 1 };
+        }
+        return { category: 'ignored', score: 0 };
     }
-    
-    // Weak Leads: Over $1M and after 2020 (but not strong leads)
-    if (estimatedAmt >= 1000000 && receivedDate && receivedDate >= new Date('2020-01-01')) {
-        return { category: 'weakLeads', score: 1 };
-    }
-    
-    // Watchlist: Over $100K and after 2018 (but not strong or weak)
-    if (estimatedAmt >= 100000 && receivedDate && receivedDate >= new Date('2018-01-01')) {
-        return { category: 'watchlist', score: 1 };
-    }
-    
-    // Everything else goes to ignored
-    return { category: 'ignored', score: 0 };
 }
 
-function recategorizeAllProjects() {
-    return new Promise((resolve, reject) => {
+async function recategorizeAllProjects() {
+    return new Promise(async (resolve, reject) => {
         // Get all projects
-        db.all('SELECT id, project_data FROM projects', (err, rows) => {
+        db.all('SELECT id, project_data FROM projects', async (err, rows) => {
             if (err) {
                 reject(err);
                 return;
@@ -301,29 +395,32 @@ function recategorizeAllProjects() {
                 return;
             }
 
-            rows.forEach(row => {
+            for (const row of rows) {
                 try {
                     const projectData = JSON.parse(row.project_data);
-                    const { category, score } = categorizeProject(projectData);
+                    const { category, score } = await categorizeProject(projectData);
                     
                     // Update category
-                    db.run(`
-                        INSERT OR REPLACE INTO project_categories 
-                        (project_id, category, score, last_categorized)
-                        VALUES (?, ?, ?, ?)
-                    `, [row.id, category, score, new Date().toISOString()], (err) => {
-                        processed++;
-                        if (processed === total) {
-                            resolve(total);
-                        }
+                    await new Promise((res, rej) => {
+                        db.run(`
+                            INSERT OR REPLACE INTO project_categories 
+                            (project_id, category, score, last_categorized)
+                            VALUES (?, ?, ?, ?)
+                        `, [row.id, category, score, new Date().toISOString()], (err) => {
+                            if (err) rej(err);
+                            else res();
+                        });
                     });
                 } catch (e) {
-                    processed++;
-                    if (processed === total) {
-                        resolve(total);
-                    }
+                    console.error('Error processing project:', e);
                 }
-            });
+                
+                processed++;
+                if (processed === total) {
+                    resolve(total);
+                    return;
+                }
+            }
         });
     });
 }
@@ -719,6 +816,59 @@ app.post('/api/recategorize', async (req, res) => {
     } catch (error) {
         console.error('Error recategorizing projects:', error);
         res.status(500).json({ error: 'Failed to recategorize projects' });
+    }
+});
+
+// Scoring Criteria API Endpoints
+
+app.get('/api/criteria', async (req, res) => {
+    try {
+        const criteria = await getAllScoringCriteria();
+        res.json(criteria);
+    } catch (error) {
+        console.error('Error getting scoring criteria:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.put('/api/criteria', async (req, res) => {
+    try {
+        const { criteria } = req.body;
+        
+        if (!criteria || typeof criteria !== 'object') {
+            return res.status(400).json({ error: 'Invalid criteria data' });
+        }
+        
+        await updateScoringCriteria(criteria);
+        res.json({ success: true, message: 'Scoring criteria updated successfully' });
+    } catch (error) {
+        console.error('Error updating scoring criteria:', error);
+        res.status(500).json({ error: 'Failed to update scoring criteria' });
+    }
+});
+
+app.post('/api/criteria/apply', async (req, res) => {
+    try {
+        const { criteria } = req.body;
+        
+        if (!criteria || typeof criteria !== 'object') {
+            return res.status(400).json({ error: 'Invalid criteria data' });
+        }
+        
+        // Update criteria first
+        await updateScoringCriteria(criteria);
+        
+        // Then recategorize all projects
+        const count = await recategorizeAllProjects();
+        
+        res.json({ 
+            success: true, 
+            message: `Criteria updated and ${count} projects recategorized successfully`,
+            recategorized_count: count
+        });
+    } catch (error) {
+        console.error('Error applying criteria:', error);
+        res.status(500).json({ error: 'Failed to apply criteria changes' });
     }
 });
 

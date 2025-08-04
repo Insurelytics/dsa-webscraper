@@ -11,32 +11,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { apiClient } from "@/lib/api"
 
-// Default criteria for categorization logic
-const defaultCriteria = {
-  strongLeads: {
-    minAmount: 2000000,
-    receivedAfter: "2023-01-01",
-    approvedAfter: "2023-01-01",
-  },
-  weakLeads: {
-    minAmount: 1000000,
-    receivedAfter: "2020-01-01",
-    approvedAfter: "2020-01-01",
-  },
-  watchlist: {
-    minAmount: 100000,
-    receivedAfter: "2018-01-01",
-    approvedAfter: "2018-01-01",
-  },
-  ignored: {
-    minAmount: 0,
-    receivedAfter: "2020-01-01",
-    approvedAfter: "2020-01-01",
-  },
-}
-
 interface ResultsAndFiltersProps {
   onSettingsChange: (hasChanges: boolean) => void
+  onSave?: () => Promise<void>
 }
 
 interface County {
@@ -63,7 +40,6 @@ interface Project {
   [key: string]: any
   'Estimated Amt'?: string
   'Received Date'?: string
-  'Approved Date'?: string
   'City'?: string
 }
 
@@ -73,20 +49,20 @@ interface CategoryResponse {
   projects: Project[]
 }
 
-export default function ResultsAndFilters({ onSettingsChange }: ResultsAndFiltersProps) {
+export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsAndFiltersProps) {
   const [customFilters, setCustomFilters] = useState({
     minAmount: "",
     receivedAfter: "",
-    approvedAfter: "",
     county: "All Counties",
   })
-  const [criteria, setCriteria] = useState(defaultCriteria)
+  const [criteria, setCriteria] = useState<Record<string, any>>({})
   const [categoryData, setCategoryData] = useState<Record<string, CategoryData>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [counties, setCounties] = useState<County[]>([])
   const [countiesWithData, setCountiesWithData] = useState<CountyWithData[]>([])
   const [customExportLoading, setCustomExportLoading] = useState(false)
+  const [originalCriteria, setOriginalCriteria] = useState<Record<string, any>>({})
 
   useEffect(() => {
     const fetchData = async () => {
@@ -94,15 +70,20 @@ export default function ResultsAndFilters({ onSettingsChange }: ResultsAndFilter
         setLoading(true)
         setError(null)
         
-        const [categories, countiesData, countiesWithDataResponse] = await Promise.all([
+        const [categories, countiesData, countiesWithDataResponse, criteriaData] = await Promise.all([
           apiClient.getCategories(),
           apiClient.getCounties(),
-          apiClient.getCountiesWithData()
+          apiClient.getCountiesWithData(),
+          apiClient.getCriteria()
         ])
+        
+        console.log('Loaded criteria from server:', criteriaData)
         
         setCategoryData(categories as Record<string, CategoryData>)
         setCounties(countiesData as County[])
         setCountiesWithData(countiesWithDataResponse as CountyWithData[])
+        setCriteria(criteriaData as Record<string, any>)
+        setOriginalCriteria(criteriaData as Record<string, any>)
       } catch (err) {
         console.error('Failed to fetch data:', err)
         setError('Failed to load data. Please check if the backend server is running.')
@@ -125,10 +106,44 @@ export default function ResultsAndFilters({ onSettingsChange }: ResultsAndFilter
     onSettingsChange(true)
   }
 
-  const handleReset = () => {
-    setCriteria(defaultCriteria)
-    onSettingsChange(false)
+  const handleReset = async () => {
+    try {
+      console.log('Resetting criteria to:', originalCriteria)
+      setCriteria(originalCriteria)
+      onSettingsChange(false)
+    } catch (error) {
+      console.error('Error resetting criteria:', error)
+      alert('Failed to reset criteria. Please try again.')
+    }
   }
+
+  const handleSaveChanges = async () => {
+    try {
+      console.log('Saving criteria:', criteria)
+      console.log('Saving criteria and applying changes...')
+      const response = await apiClient.applyCriteria(criteria) as { success: boolean, message: string, recategorized_count?: number }
+      console.log('Criteria applied successfully:', response)
+      
+      // Update original criteria to new values
+      setOriginalCriteria(criteria)
+      onSettingsChange(false)  // Clear the unsaved changes indicator
+      
+      // Refresh category data to see updated counts
+      const updatedCategories = await apiClient.getCategories()
+      setCategoryData(updatedCategories as Record<string, CategoryData>)
+      
+      alert(`Criteria updated successfully! ${response.recategorized_count || 0} projects were recategorized.`)
+    } catch (error) {
+      console.error('Error applying criteria:', error)
+      alert('Failed to apply criteria changes. Please try again.')
+      throw error; // Re-throw so parent knows save failed
+    }
+  }
+
+  // Register our save function with parent component
+  useEffect(() => {
+    (window as any).resultsAndFiltersSave = handleSaveChanges;
+  }, [handleSaveChanges])
 
   const handleTest = () => {
     console.log("Testing criteria with current data...")
@@ -187,7 +202,7 @@ export default function ResultsAndFilters({ onSettingsChange }: ResultsAndFilter
     try {
       console.log("Downloading with custom filters:", customFilters)
       
-      // Get all projects from all categories for filtering
+      // Get all projects from all categories for filtering (including ignored)
       const [strongLeads, weakLeads, watchlist, ignored] = await Promise.all([
         apiClient.getCategoryProjects('strongLeads', 10000),
         apiClient.getCategoryProjects('weakLeads', 10000),
@@ -216,13 +231,6 @@ export default function ResultsAndFilters({ onSettingsChange }: ResultsAndFilter
           const receivedDate = new Date(project['Received Date'] || '')
           const filterDate = new Date(customFilters.receivedAfter)
           if (receivedDate < filterDate) return false
-        }
-        
-        // Approved date filter
-        if (customFilters.approvedAfter && project['Approved Date']) {
-          const approvedDate = new Date(project['Approved Date'])
-          const filterDate = new Date(customFilters.approvedAfter)
-          if (approvedDate < filterDate) return false
         }
         
         // County filter
@@ -324,14 +332,18 @@ export default function ResultsAndFilters({ onSettingsChange }: ResultsAndFilter
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label htmlFor={`${category}-amount`}>Minimum Amount ($)</Label>
             <Input
               id={`${category}-amount`}
               type="number"
-              value={data.minAmount}
-              onChange={(e) => updateCriteria(category, "minAmount", parseInt(e.target.value) || 0)}
+              value={data?.minAmount || ''}
+              onChange={(e) => {
+                const value = e.target.value;
+                const numValue = value === '' ? 0 : parseInt(value);
+                updateCriteria(category, "minAmount", numValue);
+              }}
               placeholder="1000000"
             />
           </div>
@@ -340,17 +352,8 @@ export default function ResultsAndFilters({ onSettingsChange }: ResultsAndFilter
             <Input
               id={`${category}-received`}
               type="date"
-              value={data.receivedAfter}
+              value={data?.receivedAfter || ''}
               onChange={(e) => updateCriteria(category, "receivedAfter", e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor={`${category}-approved`}>Approved After</Label>
-            <Input
-              id={`${category}-approved`}
-              type="date"
-              value={data.approvedAfter}
-              onChange={(e) => updateCriteria(category, "approvedAfter", e.target.value)}
             />
           </div>
         </div>
@@ -358,8 +361,8 @@ export default function ResultsAndFilters({ onSettingsChange }: ResultsAndFilter
         <div className="p-4 bg-gray-50 rounded-lg">
           <h4 className="font-medium mb-2">Current Logic:</h4>
           <p className="text-sm text-gray-600">
-            Projects with estimated amount ≥ ${data.minAmount.toLocaleString()} AND received after {data.receivedAfter}{" "}
-            AND approved after {data.approvedAfter} will be categorized as {getCategoryName(category).toLowerCase()}.
+            Projects with estimated amount ≥ ${(data?.minAmount || 0).toLocaleString()} AND received after {data?.receivedAfter || 'any date'}{" "}
+            will be categorized as {getCategoryName(category).toLowerCase()}.
           </p>
         </div>
       </CardContent>
@@ -408,8 +411,8 @@ export default function ResultsAndFilters({ onSettingsChange }: ResultsAndFilter
             </CardHeader>
           </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {["strongLeads", "weakLeads", "watchlist", "ignored"].map((category) => {
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {["strongLeads", "weakLeads", "watchlist"].map((category) => {
               const data = categoryData[category] || { count: 0, total_value: 0, avg_value: 0 }
               return (
                 <Card key={category}>
@@ -449,7 +452,7 @@ export default function ResultsAndFilters({ onSettingsChange }: ResultsAndFilter
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <Label htmlFor="custom-amount">Minimum Amount ($)</Label>
                   <Input
@@ -470,17 +473,6 @@ export default function ResultsAndFilters({ onSettingsChange }: ResultsAndFilter
                     value={customFilters.receivedAfter}
                     onChange={(e) =>
                       setCustomFilters((prev) => ({ ...prev, receivedAfter: e.target.value }))
-                    }
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="custom-approved">Approved After</Label>
-                  <Input
-                    id="custom-approved"
-                    type="date"
-                    value={customFilters.approvedAfter}
-                    onChange={(e) =>
-                      setCustomFilters((prev) => ({ ...prev, approvedAfter: e.target.value }))
                     }
                   />
                 </div>
@@ -543,7 +535,7 @@ export default function ResultsAndFilters({ onSettingsChange }: ResultsAndFilter
           </Card>
 
           <Tabs defaultValue="strongLeads" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="strongLeads" className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
                 Strong Leads
@@ -556,16 +548,11 @@ export default function ResultsAndFilters({ onSettingsChange }: ResultsAndFilter
                 <div className="w-3 h-3 rounded-full bg-blue-500"></div>
                 Watchlist
               </TabsTrigger>
-              <TabsTrigger value="ignored" className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-gray-500"></div>
-                Ignored
-              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="strongLeads">{renderCriteriaForm("strongLeads", criteria.strongLeads)}</TabsContent>
             <TabsContent value="weakLeads">{renderCriteriaForm("weakLeads", criteria.weakLeads)}</TabsContent>
             <TabsContent value="watchlist">{renderCriteriaForm("watchlist", criteria.watchlist)}</TabsContent>
-            <TabsContent value="ignored">{renderCriteriaForm("ignored", criteria.ignored)}</TabsContent>
           </Tabs>
         </TabsContent>
       </Tabs>

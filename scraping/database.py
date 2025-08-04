@@ -288,25 +288,68 @@ class DatabaseManager:
                 conn.close()
     
     def _calculate_project_category(self, project_data: Dict) -> tuple[str, int]:
-        """Calculate the category using simple filter matching"""
+        """Calculate the category using dynamic criteria from database"""
         estimated_amt = self._extract_amount(project_data.get('Estimated Amt', '0')) or 0
         received_date = self._parse_date(project_data.get('Received Date', ''))
         
-        # Simple filter matching (no complex scoring)
-        # Strong Leads: Over $2M and after 2023
-        if estimated_amt >= 2000000 and received_date and received_date >= datetime(2023, 1, 1):
-            return 'strongLeads', 1
-        
-        # Weak Leads: Over $1M and after 2020 (but not strong leads)
-        if estimated_amt >= 1000000 and received_date and received_date >= datetime(2020, 1, 1):
-            return 'weakLeads', 1
-        
-        # Watchlist: Over $100K and after 2018 (but not strong or weak)
-        if estimated_amt >= 100000 and received_date and received_date >= datetime(2018, 1, 1):
-            return 'watchlist', 1
-        
-        # Everything else goes to ignored
-        return 'ignored', 0
+        try:
+            # Get current criteria from database
+            criteria_list = self.get_scoring_criteria()
+            
+            # Convert list to dict for easier lookup
+            criteria = {}
+            for c in criteria_list:
+                criteria[c['category']] = c
+            
+            # If no criteria exist, use defaults
+            if not criteria:
+                criteria = {
+                    'strongLeads': {'min_amount': 2000000, 'received_after': '2023-01-01'},
+                    'weakLeads': {'min_amount': 1000000, 'received_after': '2020-01-01'},
+                    'watchlist': {'min_amount': 100000, 'received_after': '2018-01-01'}
+                }
+            
+            # Check strongLeads first
+            if 'strongLeads' in criteria:
+                min_amount = criteria['strongLeads'].get('min_amount', 0)
+                received_after_str = criteria['strongLeads'].get('received_after')
+                received_after = self._parse_date(received_after_str) if received_after_str else None
+                
+                if estimated_amt >= min_amount and (not received_after or (received_date and received_date >= received_after)):
+                    return 'strongLeads', 1
+            
+            # Check weakLeads next
+            if 'weakLeads' in criteria:
+                min_amount = criteria['weakLeads'].get('min_amount', 0)
+                received_after_str = criteria['weakLeads'].get('received_after')
+                received_after = self._parse_date(received_after_str) if received_after_str else None
+                
+                if estimated_amt >= min_amount and (not received_after or (received_date and received_date >= received_after)):
+                    return 'weakLeads', 1
+            
+            # Check watchlist next
+            if 'watchlist' in criteria:
+                min_amount = criteria['watchlist'].get('min_amount', 0)
+                received_after_str = criteria['watchlist'].get('received_after')
+                received_after = self._parse_date(received_after_str) if received_after_str else None
+                
+                if estimated_amt >= min_amount and (not received_after or (received_date and received_date >= received_after)):
+                    return 'watchlist', 1
+            
+            # Everything else goes to ignored
+            return 'ignored', 0
+            
+        except Exception as e:
+            print(f"Error getting criteria, falling back to defaults: {e}")
+            
+            # Fallback to hardcoded values if database fails
+            if estimated_amt >= 2000000 and received_date and received_date >= datetime(2023, 1, 1):
+                return 'strongLeads', 1
+            if estimated_amt >= 1000000 and received_date and received_date >= datetime(2020, 1, 1):
+                return 'weakLeads', 1
+            if estimated_amt >= 100000 and received_date and received_date >= datetime(2018, 1, 1):
+                return 'watchlist', 1
+            return 'ignored', 0
     
     def get_scoring_criteria(self) -> List[Dict]:
         """Get all scoring criteria"""
