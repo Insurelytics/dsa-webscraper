@@ -380,6 +380,9 @@ class DGSScraper:
                 completed_at=datetime.now().isoformat(),
                 success_count=self.success_count
             )
+            
+            # Update county's last scraped timestamp and project count
+            self.db.update_county_last_scraped(county_id, self.success_count)
     
     def save_data(self, filename: str = "dgs_projects"):
         """Legacy method - data is now saved directly to database"""

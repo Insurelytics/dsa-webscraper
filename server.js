@@ -89,6 +89,60 @@ function initDatabase() {
                     resolve();
                 }
             });
+            
+            // Counties table for county management system
+            db.run(`
+                CREATE TABLE IF NOT EXISTS counties (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    code TEXT NOT NULL UNIQUE,
+                    enabled BOOLEAN DEFAULT TRUE,
+                    last_scraped DATETIME,
+                    total_projects INTEGER DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
+            
+            // Initialize default counties
+            initDefaultCounties();
+        });
+    });
+}
+
+// Initialize default counties
+function initDefaultCounties() {
+    const counties = [
+        { name: "Alameda", code: "01" }, { name: "Alpine", code: "02" }, { name: "Amador", code: "03" }, { name: "Butte", code: "04" },
+        { name: "Calaveras", code: "05" }, { name: "Colusa", code: "06" }, { name: "Contra Costa", code: "07" }, { name: "Del Norte", code: "08" },
+        { name: "El Dorado", code: "09" }, { name: "Fresno", code: "10" }, { name: "Glenn", code: "11" }, { name: "Humboldt", code: "12" },
+        { name: "Imperial", code: "13" }, { name: "Inyo", code: "14" }, { name: "Kern", code: "15" }, { name: "Kings", code: "16" },
+        { name: "Lake", code: "17" }, { name: "Lassen", code: "18" }, { name: "Los Angeles", code: "19" }, { name: "Madera", code: "20" },
+        { name: "Marin", code: "21" }, { name: "Mariposa", code: "22" }, { name: "Mendocino", code: "23" }, { name: "Merced", code: "24" },
+        { name: "Modoc", code: "25" }, { name: "Mono", code: "26" }, { name: "Monterey", code: "27" }, { name: "Napa", code: "28" },
+        { name: "Nevada", code: "29" }, { name: "Orange", code: "30" }, { name: "Placer", code: "31" }, { name: "Plumas", code: "32" },
+        { name: "Riverside", code: "33" }, { name: "Sacramento", code: "34" }, { name: "San Benito", code: "35" }, { name: "San Bernardino", code: "36" },
+        { name: "San Diego", code: "37" }, { name: "San Francisco", code: "38" }, { name: "San Joaquin", code: "39" }, { name: "San Luis Obispo", code: "40" },
+        { name: "San Mateo", code: "41" }, { name: "Santa Barbara", code: "42" }, { name: "Santa Clara", code: "43" }, { name: "Santa Cruz", code: "44" },
+        { name: "Shasta", code: "45" }, { name: "Sierra", code: "46" }, { name: "Siskiyou", code: "47" }, { name: "Solano", code: "48" },
+        { name: "Sonoma", code: "49" }, { name: "Stanislaus", code: "50" }, { name: "Sutter", code: "51" }, { name: "Tehama", code: "52" },
+        { name: "Trinity", code: "53" }, { name: "Tulare", code: "54" }, { name: "Tuolumne", code: "55" }, { name: "Ventura", code: "56" },
+        { name: "Yolo", code: "57" }, { name: "Yuba", code: "58" }
+    ];
+
+    counties.forEach(county => {
+        db.get('SELECT COUNT(*) as count FROM counties WHERE code = ?', [county.code], (err, row) => {
+            if (err) {
+                console.error(`Error checking for county ${county.name}:`, err);
+                return;
+            }
+            if (row.count === 0) {
+                db.run('INSERT INTO counties (name, code) VALUES (?, ?)', [county.name, county.code], (err) => {
+                    if (err) {
+                        console.error(`Error inserting county ${county.name}:`, err);
+                    }
+                });
+            }
         });
     });
 }
@@ -352,6 +406,131 @@ function updateScrapingJob(jobId, updates) {
                    if (err) reject(err);
                    else resolve();
                });
+    });
+}
+
+// County Management Functions
+
+function getAllCounties() {
+    return new Promise((resolve, reject) => {
+        db.all(`
+            SELECT c.id, c.name, c.code, c.enabled, c.last_scraped, c.total_projects,
+                   COUNT(p.id) as current_projects,
+                   MAX(sj.completed_at) as last_job_completed
+            FROM counties c
+            LEFT JOIN projects p ON p.county_id = c.code
+            LEFT JOIN scraping_jobs sj ON sj.county_id = c.code AND sj.status = 'completed'
+            GROUP BY c.id, c.name, c.code, c.enabled, c.last_scraped, c.total_projects
+            ORDER BY c.name
+        `, (err, rows) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            
+            const counties = rows.map(row => ({
+                id: row.id,
+                name: row.name,
+                code: row.code,
+                enabled: Boolean(row.enabled),
+                last_scraped: row.last_scraped,
+                total_projects: row.total_projects,
+                current_projects: row.current_projects,
+                last_job_completed: row.last_job_completed
+            }));
+            
+            resolve(counties);
+        });
+    });
+}
+
+function getEnabledCounties() {
+    return new Promise((resolve, reject) => {
+        db.all(`
+            SELECT id, name, code FROM counties 
+            WHERE enabled = TRUE 
+            ORDER BY name
+        `, (err, rows) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            resolve(rows);
+        });
+    });
+}
+
+function getCountyByCode(countyCode) {
+    return new Promise((resolve, reject) => {
+        db.get(`
+            SELECT id, name, code, enabled, last_scraped, total_projects 
+            FROM counties 
+            WHERE code = ?
+        `, [countyCode], (err, row) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            
+            if (row) {
+                resolve({
+                    id: row.id,
+                    name: row.name,
+                    code: row.code,
+                    enabled: Boolean(row.enabled),
+                    last_scraped: row.last_scraped,
+                    total_projects: row.total_projects
+                });
+            } else {
+                resolve(null);
+            }
+        });
+    });
+}
+
+function updateCountyStatus(countyId, enabled) {
+    return new Promise((resolve, reject) => {
+        db.run(`
+            UPDATE counties 
+            SET enabled = ?, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        `, [enabled, countyId], function(err) {
+            if (err) {
+                reject(err);
+                return;
+            }
+            resolve(this.changes > 0);
+        });
+    });
+}
+
+function updateCountyLastScraped(countyCode, projectCount = null) {
+    return new Promise((resolve, reject) => {
+        let query, params;
+        
+        if (projectCount !== null) {
+            query = `
+                UPDATE counties 
+                SET last_scraped = CURRENT_TIMESTAMP, total_projects = ?, updated_at = CURRENT_TIMESTAMP 
+                WHERE code = ?
+            `;
+            params = [projectCount, countyCode];
+        } else {
+            query = `
+                UPDATE counties 
+                SET last_scraped = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
+                WHERE code = ?
+            `;
+            params = [countyCode];
+        }
+        
+        db.run(query, params, function(err) {
+            if (err) {
+                reject(err);
+                return;
+            }
+            resolve(this.changes > 0);
+        });
     });
 }
 
@@ -656,6 +835,111 @@ app.post('/api/recategorize', async (req, res) => {
     } catch (error) {
         console.error('Error recategorizing projects:', error);
         res.status(500).json({ error: 'Failed to recategorize projects' });
+    }
+});
+
+// County Management API Endpoints
+
+app.get('/api/counties', async (req, res) => {
+    try {
+        const counties = await getAllCounties();
+        res.json(counties);
+    } catch (error) {
+        console.error('Error getting counties:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.get('/api/counties/enabled', async (req, res) => {
+    try {
+        const counties = await getEnabledCounties();
+        res.json(counties);
+    } catch (error) {
+        console.error('Error getting enabled counties:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.get('/api/counties/:countyCode', async (req, res) => {
+    try {
+        const { countyCode } = req.params;
+        const county = await getCountyByCode(countyCode);
+        
+        if (!county) {
+            return res.status(404).json({ error: 'County not found' });
+        }
+        
+        res.json(county);
+    } catch (error) {
+        console.error('Error getting county:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.put('/api/counties/:countyId/status', async (req, res) => {
+    try {
+        const countyId = parseInt(req.params.countyId);
+        const { enabled } = req.body;
+        
+        if (typeof enabled !== 'boolean') {
+            return res.status(400).json({ error: 'enabled field must be a boolean' });
+        }
+        
+        const success = await updateCountyStatus(countyId, enabled);
+        
+        if (!success) {
+            return res.status(404).json({ error: 'County not found' });
+        }
+        
+        res.json({ 
+            success: true, 
+            message: `County ${enabled ? 'enabled' : 'disabled'} successfully` 
+        });
+    } catch (error) {
+        console.error('Error updating county status:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/api/counties/:countyCode/scrape', async (req, res) => {
+    try {
+        const { countyCode } = req.params;
+        
+        // Check if county exists and is enabled
+        const county = await getCountyByCode(countyCode);
+        if (!county) {
+            return res.status(404).json({ error: 'County not found' });
+        }
+        
+        if (!county.enabled) {
+            return res.status(400).json({ error: 'County is disabled' });
+        }
+        
+        // Check if a scraping job is already running
+        if (currentScrapingProcess && currentScrapingProcess.exitCode === null) {
+            return res.status(400).json({ error: 'A scraping job is already running' });
+        }
+        
+        // Create new job and start scraping
+        const jobId = await createScrapingJob(countyCode);
+        
+        // Start scraping process (same as existing logic)
+        currentScrapingJob = jobId;
+        currentScrapingProcess = spawn('python3', ['dgs_scraper.py', countyCode, `--job-id=${jobId}`], {
+            cwd: __dirname,
+            stdio: 'pipe'
+        });
+        
+        res.json({
+            success: true,
+            message: `Started scraping ${county.name} County`,
+            job_id: jobId,
+            county: county
+        });
+        
+    } catch (error) {
+        console.error('Error starting county scrape:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 

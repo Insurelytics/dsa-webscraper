@@ -95,6 +95,23 @@ class DatabaseManager:
                 # Initialize default scoring criteria
                 self._init_default_criteria(conn)
                 
+                # Counties table for county management system
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS counties (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL UNIQUE,
+                        code TEXT NOT NULL UNIQUE,
+                        enabled BOOLEAN DEFAULT TRUE,
+                        last_scraped DATETIME,
+                        total_projects INTEGER DEFAULT 0,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
+                
+                # Initialize default counties
+                self._init_default_counties(conn)
+                
                 conn.execute('''
                     CREATE INDEX IF NOT EXISTS idx_projects_county_client 
                     ON projects(county_id, client_id)
@@ -712,3 +729,153 @@ class DatabaseManager:
                 fields_with_data.add(field)
         
         return fields_with_data 
+    
+    def _init_default_counties(self, conn=None):
+        """Initialize default California counties if they don't exist"""
+        # California counties with their DGS codes
+        ca_counties = [
+            ("Alameda", "01"), ("Alpine", "02"), ("Amador", "03"), ("Butte", "04"),
+            ("Calaveras", "05"), ("Colusa", "06"), ("Contra Costa", "07"), ("Del Norte", "08"),
+            ("El Dorado", "09"), ("Fresno", "10"), ("Glenn", "11"), ("Humboldt", "12"),
+            ("Imperial", "13"), ("Inyo", "14"), ("Kern", "15"), ("Kings", "16"),
+            ("Lake", "17"), ("Lassen", "18"), ("Los Angeles", "19"), ("Madera", "20"),
+            ("Marin", "21"), ("Mariposa", "22"), ("Mendocino", "23"), ("Merced", "24"),
+            ("Modoc", "25"), ("Mono", "26"), ("Monterey", "27"), ("Napa", "28"),
+            ("Nevada", "29"), ("Orange", "30"), ("Placer", "31"), ("Plumas", "32"),
+            ("Riverside", "33"), ("Sacramento", "34"), ("San Benito", "35"), ("San Bernardino", "36"),
+            ("San Diego", "37"), ("San Francisco", "38"), ("San Joaquin", "39"), ("San Luis Obispo", "40"),
+            ("San Mateo", "41"), ("Santa Barbara", "42"), ("Santa Clara", "43"), ("Santa Cruz", "44"),
+            ("Shasta", "45"), ("Sierra", "46"), ("Siskiyou", "47"), ("Solano", "48"),
+            ("Sonoma", "49"), ("Stanislaus", "50"), ("Sutter", "51"), ("Tehama", "52"),
+            ("Trinity", "53"), ("Tulare", "54"), ("Tuolumne", "55"), ("Ventura", "56"),
+            ("Yolo", "57"), ("Yuba", "58")
+        ]
+        
+        close_conn = False
+        if conn is None:
+            conn = self._get_connection()
+            close_conn = True
+            
+        try:
+            # Check if counties already exist
+            cursor = conn.execute('SELECT COUNT(*) FROM counties')
+            count = cursor.fetchone()[0]
+            
+            if count == 0:
+                # Insert all California counties
+                conn.executemany(
+                    'INSERT INTO counties (name, code) VALUES (?, ?)',
+                    ca_counties
+                )
+                conn.commit()
+        finally:
+            if close_conn:
+                conn.close()
+    
+    def get_all_counties(self):
+        """Get all counties with their status and statistics"""
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                cursor = conn.execute('''
+                    SELECT c.id, c.name, c.code, c.enabled, c.last_scraped, c.total_projects,
+                           COUNT(p.id) as current_projects,
+                           MAX(sj.completed_at) as last_job_completed
+                    FROM counties c
+                    LEFT JOIN projects p ON p.county_id = c.code
+                    LEFT JOIN scraping_jobs sj ON sj.county_id = c.code AND sj.status = 'completed'
+                    GROUP BY c.id, c.name, c.code, c.enabled, c.last_scraped, c.total_projects
+                    ORDER BY c.name
+                ''')
+                
+                counties = []
+                for row in cursor.fetchall():
+                    counties.append({
+                        'id': row[0],
+                        'name': row[1],
+                        'code': row[2],
+                        'enabled': bool(row[3]),
+                        'last_scraped': row[4],
+                        'total_projects': row[5],
+                        'current_projects': row[6],
+                        'last_job_completed': row[7]
+                    })
+                
+                return counties
+            finally:
+                conn.close()
+    
+    def update_county_status(self, county_id: int, enabled: bool):
+        """Enable or disable a county"""
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                conn.execute(
+                    'UPDATE counties SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                    (enabled, county_id)
+                )
+                conn.commit()
+                return True
+            except Exception as e:
+                print(f"Error updating county status: {e}")
+                return False
+            finally:
+                conn.close()
+    
+    def update_county_last_scraped(self, county_code: str, project_count: int = None):
+        """Update the last scraped time for a county"""
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                if project_count is not None:
+                    conn.execute(
+                        'UPDATE counties SET last_scraped = CURRENT_TIMESTAMP, total_projects = ?, updated_at = CURRENT_TIMESTAMP WHERE code = ?',
+                        (project_count, county_code)
+                    )
+                else:
+                    conn.execute(
+                        'UPDATE counties SET last_scraped = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE code = ?',
+                        (county_code,)
+                    )
+                conn.commit()
+                return True
+            except Exception as e:
+                print(f"Error updating county last scraped: {e}")
+                return False
+            finally:
+                conn.close()
+    
+    def get_county_by_code(self, county_code: str):
+        """Get a county by its code"""
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                cursor = conn.execute(
+                    'SELECT id, name, code, enabled, last_scraped, total_projects FROM counties WHERE code = ?',
+                    (county_code,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        'id': row[0],
+                        'name': row[1],
+                        'code': row[2],
+                        'enabled': bool(row[3]),
+                        'last_scraped': row[4],
+                        'total_projects': row[5]
+                    }
+                return None
+            finally:
+                conn.close()
+    
+    def get_enabled_counties(self):
+        """Get only enabled counties"""
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                cursor = conn.execute(
+                    'SELECT id, name, code FROM counties WHERE enabled = TRUE ORDER BY name'
+                )
+                return [{'id': row[0], 'name': row[1], 'code': row[2]} for row in cursor.fetchall()]
+            finally:
+                conn.close() 
