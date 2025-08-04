@@ -159,16 +159,19 @@ class DatabaseManager:
             '# of incr', 'scraped_at', 'url'
         ]
         
-        # Get all fields
+        # Get all fields and filter out empty ones
         all_fields = set()
         for project in projects:
             all_fields.update(project.keys())
         
+        # Filter out completely empty fields
+        fields_with_data = self._get_non_empty_fields(projects, all_fields)
+        
         # Order fields: preferred order first, then alphabetical for remaining
         ordered_fields = []
-        remaining_fields = all_fields.copy()
+        remaining_fields = fields_with_data.copy()
         
-        # Add preferred fields that exist
+        # Add preferred fields that have data
         for field in preferred_order:
             if field in remaining_fields:
                 ordered_fields.append(field)
@@ -177,11 +180,17 @@ class DatabaseManager:
         # Add remaining fields alphabetically
         ordered_fields.extend(sorted(remaining_fields))
         
+        # Filter projects to only include the selected fields
+        filtered_projects = []
+        for project in projects:
+            filtered_project = {field: project.get(field, '') for field in ordered_fields}
+            filtered_projects.append(filtered_project)
+        
         # Create CSV in memory
         output = io.StringIO()
         writer = csv.DictWriter(output, fieldnames=ordered_fields)
         writer.writeheader()
-        writer.writerows(projects)
+        writer.writerows(filtered_projects)
         
         return output.getvalue()
     
@@ -315,3 +324,36 @@ class DatabaseManager:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute('SELECT COUNT(*) FROM projects')
             return cursor.fetchone()[0] 
+
+    def _get_non_empty_fields(self, projects: List[Dict], all_fields: set) -> set:
+        """Return fields that have meaningful data in at least one row"""
+        fields_with_data = set()
+        
+        for field in all_fields:
+            has_meaningful_data = False
+            
+            for project in projects:
+                value = project.get(field)
+                
+                # Skip None, empty strings, and whitespace-only values
+                if value is None or not str(value).strip():
+                    continue
+                
+                # Convert to string for comparison
+                str_value = str(value).strip()
+                
+                # Skip common empty/meaningless values
+                empty_values = {
+                    '', '0', '0.0', '0.00', '$0', '$0.0', '$0.00', 
+                    'N/A', 'NA', 'n/a', 'na', 'None', 'none', 'null',
+                    'undefined', 'Undefined', 'UNDEFINED', '-', '--', '---'
+                }
+                
+                if str_value not in empty_values:
+                    has_meaningful_data = True
+                    break
+            
+            if has_meaningful_data:
+                fields_with_data.add(field)
+        
+        return fields_with_data 

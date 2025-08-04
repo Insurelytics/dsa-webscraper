@@ -301,8 +301,13 @@ class DGSScraper:
                 # Check if project already exists in database
                 if self.db.project_exists(project['origin_id'], project['app_id']):
                     print(f"Skipping already scraped project {self.total_attempts}: {project['project_name'][:50]}...")
+                    self.success_count += 1  # Count skipped as success
                     if job_id:
-                        self.db.update_scraping_job(job_id, processed_projects=self.total_attempts)
+                        self.db.update_scraping_job(
+                            job_id, 
+                            processed_projects=self.total_attempts,
+                            success_count=self.success_count
+                        )
                     continue
                 
                 print(f"Processing project {self.total_attempts}: {project['project_name'][:50]}...")

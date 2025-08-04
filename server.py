@@ -121,7 +121,7 @@ async def home():
                 <h3>Scraping in Progress</h3>
                 <p><strong>County:</strong> {job_status['county_id']}</p>
                 <p><strong>Progress:</strong> {job_status['processed_projects']}/{job_status['total_projects']} projects</p>
-                <p><strong>New Projects:</strong> {job_status['success_count']} | <strong>Skipped:</strong> {job_status['processed_projects'] - job_status['success_count']}</p>
+                <p><strong>Projects:</strong> {job_status['success_count']} | <strong>Errors:</strong> {job_status['processed_projects'] - job_status['success_count']}</p>
                 <div class="progress-container">
                     <div class="progress-bar">
                         <div class="progress-fill" style="width: {progress}%"></div>
