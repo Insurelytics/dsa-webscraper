@@ -31,15 +31,17 @@ export default function DGSScraperDashboard() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    const fetchDashboardData = async (silent = false) => {
       try {
-        setLoading(true)
-        setError(null)
+        if (!silent) {
+          setLoading(true)
+          setError(null)
+        }
         
         const [stats, categories] = await Promise.all([
           apiClient.getStats(),
           apiClient.getCategories()
-        ])
+        ]) as [any, any]
 
         setDashboardStats({
           totalProjects: stats.total_projects || 0,
@@ -54,13 +56,24 @@ export default function DGSScraperDashboard() {
         })
       } catch (err) {
         console.error('Failed to fetch dashboard data:', err)
-        setError('Failed to load dashboard data. Please check if the backend server is running.')
+        if (!silent) {
+          setError('Failed to load dashboard data. Please check if the backend server is running.')
+        }
       } finally {
-        setLoading(false)
+        if (!silent) {
+          setLoading(false)
+        }
       }
     }
 
     fetchDashboardData()
+    
+    // Auto-refresh dashboard stats every 5 seconds (silent refresh)
+    const interval = setInterval(() => {
+      fetchDashboardData(true)
+    }, 5000)
+
+    return () => clearInterval(interval)
   }, [])
 
   const handleSaveChanges = () => {
@@ -243,13 +256,6 @@ export default function DGSScraperDashboard() {
                         <Badge variant={dashboardStats.failedJobs > 0 ? "destructive" : "outline"}>
                           {dashboardStats.failedJobs}
                         </Badge>
-                      </div>
-                      <div className="pt-2">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium">System Health</span>
-                          <span className="text-sm text-green-600">Excellent</span>
-                        </div>
-                        <Progress value={95} className="h-2" />
                       </div>
                     </div>
                   </CardContent>

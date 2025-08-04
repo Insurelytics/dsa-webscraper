@@ -1,184 +1,222 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { Search, Play, Clock, CheckCircle } from "lucide-react"
+import { Search, Play, Clock, CheckCircle, AlertCircle } from "lucide-react"
+import { apiClient } from "@/lib/api"
 
 interface CountySelectionProps {
   onSettingsChange: (hasChanges: boolean) => void
 }
 
-const counties = [
-  "Alameda",
-  "Kings",
-  "Placer",
-  "Sierra",
-  "Alpine",
-  "Lake",
-  "Plumas",
-  "Siskiyou",
-  "Amador",
-  "Lassen",
-  "Riverside",
-  "Solano",
-  "Butte",
-  "Los Angeles",
-  "Sacramento",
-  "Sonoma",
-  "Calaveras",
-  "Madera",
-  "San Benito",
-  "Stanislaus",
-  "Colusa",
-  "Marin",
-  "San Bernardino",
-  "Sutter",
-  "Contra Costa",
-  "Mariposa",
-  "San Diego",
-  "Tehama",
-  "Del Norte",
-  "Mendocino",
-  "San Francisco",
-  "Trinity",
-  "El Dorado",
-  "Merced",
-  "San Joaquin",
-  "Tulare",
-  "Fresno",
-  "Modoc",
-  "San Luis Obispo",
-  "Tuolumne",
-  "Glenn",
-  "Mono",
-  "San Mateo",
-  "Ventura",
-  "Humboldt",
-  "Monterey",
-  "Santa Barbara",
-  "Yolo",
-  "Imperial",
-  "Napa",
-  "Santa Clara",
-  "Yuba",
-  "Inyo",
-  "Nevada",
-  "Santa Cruz",
-  "Kern",
-  "Orange",
-  "Shasta",
-]
-
-// Placeholder data for county status
-const countyStatus = {
-  Sacramento: {
-    lastScraped: "2024-01-15 14:30:00",
-    totalScraped: "2024-01-15 14:30:00",
-    projects: 234,
-    status: "complete",
-  },
-  "Los Angeles": {
-    lastScraped: "2024-01-15 12:15:00",
-    totalScraped: "2024-01-14 09:20:00",
-    projects: 1456,
-    status: "running",
-  },
-  "San Francisco": {
-    lastScraped: "2024-01-14 16:45:00",
-    totalScraped: "2024-01-14 16:45:00",
-    projects: 89,
-    status: "complete",
-  },
-  Orange: {
-    lastScraped: "2024-01-13 11:20:00",
-    totalScraped: "2024-01-13 11:20:00",
-    projects: 567,
-    status: "complete",
-  },
-  "San Diego": {
-    lastScraped: "2024-01-12 08:30:00",
-    totalScraped: "2024-01-12 08:30:00",
-    projects: 445,
-    status: "scheduled",
-  },
+interface County {
+  id: number
+  name: string
+  code: string
+  enabled: boolean
+  last_scraped: string | null
+  total_projects: number
+  current_projects: number
+  last_job_completed: string | null
 }
 
 export default function CountySelection({ onSettingsChange }: CountySelectionProps) {
-  const [selectedCounties, setSelectedCounties] = useState<string[]>([
-    "Sacramento",
-    "Los Angeles",
-    "San Francisco",
-    "Orange",
-    "San Diego",
-  ])
+  const [counties, setCounties] = useState<County[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
-  const [showSelectedOnly, setShowSelectedOnly] = useState(false)
+  const [showEnabledOnly, setShowEnabledOnly] = useState(false)
+  const [scrapingCounties, setScrapingCounties] = useState<Set<string>>(new Set())
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [runningJobs, setRunningJobs] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    loadCounties()
+    loadRunningJobs()
+  }, [])
+
+  // Refresh running jobs every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadRunningJobs()
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  const loadCounties = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const countiesData = await apiClient.getCounties()
+      setCounties(countiesData)
+    } catch (err) {
+      console.error('Failed to load counties:', err)
+      setError('Failed to load counties. Please check if the backend server is running.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadRunningJobs = async () => {
+    try {
+      const jobs = await apiClient.getAllJobs(50)
+      const running = new Set<string>()
+      jobs.forEach((job: any) => {
+        if (job.status === 'running' || job.status === 'pending') {
+          running.add(job.county_id)
+        }
+      })
+      setRunningJobs(running)
+    } catch (err) {
+      console.error('Failed to load running jobs:', err)
+    }
+  }
 
   const filteredCounties = counties.filter((county) => {
-    const matchesSearch = county.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesFilter = showSelectedOnly ? selectedCounties.includes(county) : true
+    const matchesSearch = county.name.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesFilter = showEnabledOnly ? county.enabled : true
     return matchesSearch && matchesFilter
   })
 
-  const handleCountyToggle = (county: string) => {
-    if (selectedCounties.includes(county)) {
-      // Show confirmation when unchecking
-      if (confirm(`Are you sure you want to remove ${county} from your scrape list?`)) {
-        setSelectedCounties((prev) => prev.filter((c) => c !== county))
-        onSettingsChange(true)
+  const handleCountyToggle = async (county: County) => {
+    const newEnabled = !county.enabled
+    
+    if (!newEnabled) {
+      // Show confirmation when disabling
+      if (!confirm(`Are you sure you want to disable ${county.name} County? This will exclude it from scheduled scraping.`)) {
+        return
       }
-    } else {
-      setSelectedCounties((prev) => [...prev, county])
-      onSettingsChange(true)
+    }
+
+    try {
+      await apiClient.updateCountyStatus(county.id, newEnabled)
+      
+      // Update local state
+      setCounties(prev => prev.map(c => 
+        c.id === county.id ? { ...c, enabled: newEnabled } : c
+      ))
+      
+      setHasUnsavedChanges(false) // Changes are saved immediately
+      onSettingsChange(false)
+    } catch (error) {
+      console.error('Failed to update county status:', error)
+      alert('Failed to update county status. Please try again.')
     }
   }
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "complete":
-        return <CheckCircle className="h-4 w-4 text-green-500" />
-      case "running":
-        return <Play className="h-4 w-4 text-blue-500" />
-      case "scheduled":
-        return <Clock className="h-4 w-4 text-yellow-500" />
-      default:
-        return <Clock className="h-4 w-4 text-gray-400" />
+  const handleScrapeNow = async (county: County) => {
+    if (scrapingCounties.has(county.code) || runningJobs.has(county.code)) {
+      return // Already scraping
+    }
+
+    try {
+      setScrapingCounties(prev => new Set(prev).add(county.code))
+      await apiClient.scrapeCounty(county.code)
+      
+      // Immediately add to running jobs
+      setRunningJobs(prev => new Set(prev).add(county.code))
+      
+      alert(`Started scraping ${county.name} County. Check the Job Monitor tab for progress.`)
+    } catch (error) {
+      console.error('Failed to start scraping:', error)
+      
+      // Show specific error message if available
+      if (error instanceof Error && error.message.includes('400')) {
+        alert('Another scraping job is already running. Please wait for it to complete before starting a new job.')
+      } else {
+        alert('Failed to start scraping. Please try again.')
+      }
+    } finally {
+      setScrapingCounties(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(county.code)
+        return newSet
+      })
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "complete":
-        return (
-          <Badge variant="default" className="bg-green-500">
-            Complete
-          </Badge>
-        )
-      case "running":
-        return (
-          <Badge variant="default" className="bg-blue-500">
-            Running
-          </Badge>
-        )
-      case "scheduled":
-        return <Badge variant="secondary">Scheduled</Badge>
-      default:
-        return <Badge variant="outline">Not Scraped</Badge>
+  const getStatusIcon = (county: County) => {
+    if (scrapingCounties.has(county.code) || runningJobs.has(county.code)) {
+      return <Play className="h-4 w-4 text-blue-500 animate-pulse" />
     }
+    
+    if (county.last_scraped || county.current_projects > 0) {
+      return <CheckCircle className="h-4 w-4 text-green-500" />
+    }
+    
+    return <Clock className="h-4 w-4 text-gray-400" />
   }
+
+  const getStatusBadge = (county: County) => {
+    if (scrapingCounties.has(county.code) || runningJobs.has(county.code)) {
+      return (
+        <Badge variant="default" className="bg-blue-500">
+          Scraping...
+        </Badge>
+      )
+    }
+    
+    if (county.last_scraped || county.current_projects > 0) {
+      return (
+        <Badge variant="default" className="bg-green-500">
+          Complete
+        </Badge>
+      )
+    }
+    
+    return <Badge variant="outline">Never Scraped</Badge>
+  }
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return 'Never'
+    return new Date(dateStr).toLocaleString()
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+              <span className="ml-2">Loading counties...</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center">
+              <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+              <p className="text-red-600 mb-4">{error}</p>
+              <Button onClick={loadCounties}>Retry</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const enabledCount = counties.filter(c => c.enabled).length
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>County Selection</CardTitle>
+          <CardTitle>County Management</CardTitle>
           <CardDescription>
-            Build your custom scrape list by selecting counties. Selected counties will be included in scheduled
-            scraping jobs.
+            Enable or disable counties for scraping. Enabled counties will be included in scheduled scraping jobs.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -192,59 +230,76 @@ export default function CountySelection({ onSettingsChange }: CountySelectionPro
                 className="pl-10"
               />
             </div>
-            <Button variant="outline" onClick={() => setShowSelectedOnly(!showSelectedOnly)}>
-              {showSelectedOnly ? "Show All" : "Show Selected"}
+            <Button variant="outline" onClick={() => setShowEnabledOnly(!showEnabledOnly)}>
+              {showEnabledOnly ? "Show All" : "Show Enabled Only"}
             </Button>
           </div>
 
           <div className="text-sm text-gray-600">
-            {selectedCounties.length} of {counties.length} counties selected
+            {enabledCount} of {counties.length} counties enabled for scraping
           </div>
         </CardContent>
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredCounties.map((county) => {
-          const isSelected = selectedCounties.includes(county)
-          const status = countyStatus[county as keyof typeof countyStatus]
-
-          return (
-            <Card
-              key={county}
-              className={`cursor-pointer transition-all ${isSelected ? "ring-2 ring-blue-500 bg-blue-50" : "hover:shadow-md"}`}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-3">
-                    <Checkbox checked={isSelected} onCheckedChange={() => handleCountyToggle(county)} />
-                    <div>
-                      <h3 className="font-medium">{county}</h3>
-                      {status && (
-                        <div className="space-y-1 mt-2">
-                          <div className="flex items-center space-x-2 text-xs text-gray-600">
-                            {getStatusIcon(status.status)}
-                            <span>Projects: {status.projects}</span>
-                          </div>
-                          <div className="text-xs text-gray-500">Last scraped: {status.lastScraped}</div>
-                          <div className="text-xs text-gray-500">Total scraped: {status.totalScraped}</div>
-                        </div>
-                      )}
+        {filteredCounties.map((county) => (
+          <Card
+            key={county.id}
+            className={`cursor-pointer transition-all ${county.enabled ? "ring-2 ring-blue-500 bg-blue-50" : "hover:shadow-md"}`}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center space-x-3">
+                  <Checkbox 
+                    checked={county.enabled} 
+                    onCheckedChange={() => handleCountyToggle(county)} 
+                  />
+                  <div>
+                    <h3 className="font-medium">{county.name}</h3>
+                    <div className="space-y-1 mt-2">
+                      <div className="flex items-center space-x-2 text-xs text-gray-600">
+                        {getStatusIcon(county)}
+                        <span>Projects: {county.current_projects}</span>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Last scraped: {formatDate(county.last_scraped)}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Total projects: {county.total_projects}
+                      </div>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end space-y-2">
-                    {status && getStatusBadge(status.status)}
-                    {isSelected && (
-                      <Button size="sm" variant="outline">
-                        Scrape Now
-                      </Button>
-                    )}
-                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          )
-        })}
+                <div className="flex flex-col items-end space-y-2">
+                  {getStatusBadge(county)}
+                  {county.enabled && !runningJobs.has(county.code) && !scrapingCounties.has(county.code) && (
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleScrapeNow(county)}
+                      disabled={scrapingCounties.has(county.code)}
+                    >
+                      {scrapingCounties.has(county.code) ? 'Scraping...' : 'Scrape Now'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
+
+      {filteredCounties.length === 0 && (
+        <Card>
+          <CardContent className="text-center py-12">
+            <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Counties Found</h3>
+            <p className="text-gray-600">
+              {searchTerm ? 'Try adjusting your search terms.' : 'No counties match the current filter.'}
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

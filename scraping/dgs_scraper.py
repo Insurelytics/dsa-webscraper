@@ -15,6 +15,7 @@ import csv
 import os
 from database import DatabaseManager
 from datetime import datetime
+import argparse
 
 class DGSScraper:
     def __init__(self, db_manager: DatabaseManager = None):
@@ -390,16 +391,27 @@ class DGSScraper:
         print("Data is automatically saved to database. Use database.export_to_csv() for CSV export.")
 
 def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='DGS School Projects Scraper')
+    parser.add_argument('county_id', nargs='?', default='34', help='County ID to scrape (default: 34)')
+    parser.add_argument('--job-id', type=int, help='Job ID for progress tracking')
+    
+    args = parser.parse_args()
+    county_id = args.county_id
+    job_id = args.job_id
+    
     db = DatabaseManager()
     scraper = DGSScraper(db)
     
-    # Scrape all projects in Sacramento County (34)
+    # Scrape projects in the specified county
     print("Starting DGS School Projects scraper...")
     print("This will scrape project data from the California DGS website.")
-    print("Scraping ALL projects in Sacramento County (ID: 34)")
+    print(f"Scraping projects in County ID: {county_id}")
+    if job_id:
+        print(f"Job ID: {job_id}")
     
     try:
-        scraper.scrape_county("34")
+        scraper.scrape_county(county_id, job_id=job_id)
         
         project_count = db.get_project_count()
         if project_count > 0:

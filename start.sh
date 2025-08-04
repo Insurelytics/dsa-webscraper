@@ -55,7 +55,7 @@ cd ..
 # Start backend server
 echo "Starting backend server on port 8000..."
 cd server
-node server.js &
+nodemon server.js &
 BACKEND_PID=$!
 cd ..
 

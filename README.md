@@ -5,7 +5,7 @@ A full-stack application for scraping and categorizing California Department of 
 ## Project Structure
 
 ```
-dsa-webscraper/
+dgs-webscraper/
 ├── server/                     # Backend API server
 │   ├── server.js              # Express.js API server
 │   ├── package.json           # Backend dependencies

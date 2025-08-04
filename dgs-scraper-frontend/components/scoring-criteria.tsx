@@ -206,38 +206,6 @@ export default function ScoringCriteria() {
 
         <TabsContent value="ignored">{renderCriteriaForm("ignored", criteria.ignored)}</TabsContent>
       </Tabs>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Categorization Preview</CardTitle>
-          <CardDescription>Preview how projects would be categorized with current criteria</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
-              <div className="p-4 bg-green-50 rounded-lg">
-                <div className="text-2xl font-bold text-green-600">1,234</div>
-                <div className="text-sm text-green-700">Strong Leads</div>
-              </div>
-              <div className="p-4 bg-yellow-50 rounded-lg">
-                <div className="text-2xl font-bold text-yellow-600">2,456</div>
-                <div className="text-sm text-yellow-700">Weak Leads</div>
-              </div>
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600">3,789</div>
-                <div className="text-sm text-blue-700">Watchlist</div>
-              </div>
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <div className="text-2xl font-bold text-gray-600">8,263</div>
-                <div className="text-sm text-gray-700">Ignored</div>
-              </div>
-            </div>
-            <p className="text-sm text-gray-600 text-center">
-              Based on current criteria applied to existing project database
-            </p>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }

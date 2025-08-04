@@ -96,7 +96,7 @@ function initDatabase() {
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
                     code TEXT NOT NULL UNIQUE,
-                    enabled BOOLEAN DEFAULT TRUE,
+                    enabled BOOLEAN DEFAULT FALSE,
                     last_scraped DATETIME,
                     total_projects INTEGER DEFAULT 0,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -382,11 +382,91 @@ function getJobStatus(jobId) {
     });
 }
 
+function getAllJobs(limit = 50) {
+    return new Promise((resolve, reject) => {
+        db.all(`
+            SELECT sj.*, c.name as county_name 
+            FROM scraping_jobs sj
+            LEFT JOIN counties c ON c.code = sj.county_id
+            ORDER BY sj.started_at DESC 
+            LIMIT ?
+        `, [limit], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+        });
+    });
+}
+
+function stopJob(jobId) {
+    return new Promise((resolve, reject) => {
+        // Update job status to stopped
+        updateScrapingJob(jobId, {
+            status: 'stopped',
+            completed_at: new Date().toISOString()
+        }).then(() => {
+            // If this is the currently running job, kill the process
+            if (currentScrapingJob === jobId) {
+                if (currentScrapingProcess && !currentScrapingProcess.killed) {
+                    currentScrapingProcess.kill('SIGTERM');
+                }
+                currentScrapingProcess = null;
+                currentScrapingJob = null;
+            }
+            resolve();
+        }).catch(reject);
+    });
+}
+
+function retryJob(jobId) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            // Get the original job details
+            const originalJob = await getJobStatus(jobId);
+            if (!originalJob) {
+                reject(new Error('Job not found'));
+                return;
+            }
+
+            // Check if county exists and is enabled
+            const county = await getCountyByCode(originalJob.county_id);
+            if (!county) {
+                reject(new Error('County not found'));
+                return;
+            }
+            
+            if (!county.enabled) {
+                reject(new Error('County is disabled'));
+                return;
+            }
+            
+            // Check if a scraping job is already running
+            if (currentScrapingProcess && currentScrapingProcess.exitCode === null) {
+                reject(new Error('A scraping job is already running'));
+                return;
+            }
+            
+            // Create new job and start scraping
+            const newJobId = await createScrapingJob(originalJob.county_id);
+            
+            // Start scraping process
+            currentScrapingJob = newJobId;
+            currentScrapingProcess = spawn('python3', [path.join(__dirname, '..', 'scraping', 'dgs_scraper.py'), originalJob.county_id, `--job-id=${newJobId}`], {
+                cwd: path.join(__dirname, '..'),
+                stdio: 'pipe'
+            });
+            
+            resolve(newJobId);
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
 function createScrapingJob(countyId) {
     return new Promise((resolve, reject) => {
         const startedAt = new Date().toISOString();
-        db.run('INSERT INTO scraping_jobs (county_id, started_at) VALUES (?, ?)', 
-               [countyId, startedAt], 
+        db.run('INSERT INTO scraping_jobs (county_id, status, started_at) VALUES (?, ?, ?)', 
+               [countyId, 'running', startedAt], 
                function(err) {
                    if (err) reject(err);
                    else resolve(this.lastID);
@@ -690,9 +770,11 @@ app.post('/api/counties/:countyCode/scrape', async (req, res) => {
             return res.status(400).json({ error: 'County is disabled' });
         }
         
-        // Check if a scraping job is already running
+        // Check if a scraping job is already running for any county
         if (currentScrapingProcess && currentScrapingProcess.exitCode === null) {
-            return res.status(400).json({ error: 'A scraping job is already running' });
+            return res.status(400).json({ 
+                error: 'A scraping job is already running. Please wait for it to complete before starting another job.'
+            });
         }
         
         // Create new job and start scraping
@@ -703,6 +785,38 @@ app.post('/api/counties/:countyCode/scrape', async (req, res) => {
         currentScrapingProcess = spawn('python3', [path.join(__dirname, '..', 'scraping', 'dgs_scraper.py'), countyCode, `--job-id=${jobId}`], {
             cwd: path.join(__dirname, '..'),
             stdio: 'pipe'
+        });
+
+        // Handle process completion
+        currentScrapingProcess.on('exit', (code) => {
+            console.log(`Scraping process exited with code ${code}`);
+            
+            // Update job status based on exit code
+            const status = code === 0 ? 'completed' : 'failed';
+            const errorMessage = code !== 0 ? `Process exited with code ${code}` : null;
+            
+            updateScrapingJob(jobId, {
+                status: status,
+                completed_at: new Date().toISOString(),
+                error_message: errorMessage
+            }).catch(console.error);
+            
+            currentScrapingProcess = null;
+            currentScrapingJob = null;
+        });
+
+        // Handle process errors
+        currentScrapingProcess.on('error', (error) => {
+            console.error('Scraping process error:', error);
+            
+            updateScrapingJob(jobId, {
+                status: 'failed',
+                completed_at: new Date().toISOString(),
+                error_message: error.message
+            }).catch(console.error);
+            
+            currentScrapingProcess = null;
+            currentScrapingJob = null;
         });
         
         res.json({
@@ -791,6 +905,46 @@ app.get('/status/:jobId', async (req, res) => {
     } catch (error) {
         console.error('Error getting job status:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.get('/api/jobs', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 50;
+        const jobs = await getAllJobs(limit);
+        res.json(jobs);
+    } catch (error) {
+        console.error('Error getting jobs:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/api/jobs/:jobId/stop', async (req, res) => {
+    try {
+        const jobId = parseInt(req.params.jobId);
+        await stopJob(jobId);
+        res.json({ 
+            success: true, 
+            message: 'Job stopped successfully' 
+        });
+    } catch (error) {
+        console.error('Error stopping job:', error);
+        res.status(500).json({ error: 'Failed to stop job' });
+    }
+});
+
+app.post('/api/jobs/:jobId/retry', async (req, res) => {
+    try {
+        const jobId = parseInt(req.params.jobId);
+        const newJobId = await retryJob(jobId);
+        res.json({ 
+            success: true, 
+            message: 'Job retried successfully',
+            new_job_id: newJobId
+        });
+    } catch (error) {
+        console.error('Error retrying job:', error);
+        res.status(500).json({ error: error.message || 'Failed to retry job' });
     }
 });
 

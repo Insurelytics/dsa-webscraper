@@ -658,6 +658,7 @@ class DatabaseManager:
                     f'UPDATE scraping_jobs SET {set_clause} WHERE id = ?',
                     values
                 )
+                conn.commit()
             finally:
                 conn.close()
     
