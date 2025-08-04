@@ -252,7 +252,7 @@ class DatabaseManager:
         return False
     
     def _categorize_project(self, project_id: int, project_data: Dict, conn=None):
-        """Categorize a project based on scoring criteria"""
+        """Categorize a project based on simple filter matching"""
         category, score = self._calculate_project_category(project_data)
         
         should_close = False
@@ -271,81 +271,25 @@ class DatabaseManager:
                 conn.close()
     
     def _calculate_project_category(self, project_data: Dict) -> tuple[str, int]:
-        """Calculate the category and score for a project"""
-        estimated_amt = self._extract_amount(project_data.get('Estimated Amt', '0'))
+        """Calculate the category using simple filter matching"""
+        estimated_amt = self._extract_amount(project_data.get('Estimated Amt', '0')) or 0
         received_date = self._parse_date(project_data.get('Received Date', ''))
-        approved_date = self._parse_date(project_data.get('Approved Date', ''))
-        project_text = (
-            f"{project_data.get('project_name', '')} "
-            f"{project_data.get('Project Type', '')} "
-            f"{project_data.get('Project Scope', '')}"
-        ).lower()
         
-        # Get scoring criteria
-        criteria_list = self.get_scoring_criteria()
+        # Simple filter matching (no complex scoring)
+        # Strong Leads: Over $2M and after 2023
+        if estimated_amt >= 2000000 and received_date and received_date >= datetime(2023, 1, 1):
+            return 'strongLeads', 1
         
-        # Score each category
-        category_scores = {}
+        # Weak Leads: Over $1M and after 2020 (but not strong leads)
+        if estimated_amt >= 1000000 and received_date and received_date >= datetime(2020, 1, 1):
+            return 'weakLeads', 1
         
-        for criteria in criteria_list:
-            score = 0
-            category = criteria['category']
-            
-            # Amount scoring
-            if estimated_amt and estimated_amt >= criteria['min_amount']:
-                score += 40
-            
-            # Date scoring
-            received_after = self._parse_date(criteria['received_after']) if criteria['received_after'] else None
-            approved_after = self._parse_date(criteria['approved_after']) if criteria['approved_after'] else None
-            
-            if received_date and received_after and received_date >= received_after:
-                score += 20
-            
-            if approved_date and approved_after and approved_date >= approved_after:
-                score += 20
-            
-            # Keywords scoring
-            if criteria['keywords']:
-                keywords = [k.strip().lower() for k in criteria['keywords'].split(',')]
-                for keyword in keywords:
-                    if keyword in project_text:
-                        score += 10
-                        break
-            
-            # Additional scoring logic for different categories
-            if category == 'strongLeads':
-                # Bonus for high-value projects
-                if estimated_amt and estimated_amt >= 5000000:
-                    score += 10
-                # Bonus for new construction
-                if any(term in project_text for term in ['new school', 'new building', 'ground up']):
-                    score += 15
-            
-            elif category == 'weakLeads':
-                # Bonus for medium value projects
-                if estimated_amt and 500000 <= estimated_amt < 2000000:
-                    score += 5
-            
-            elif category == 'watchlist':
-                # Bonus for ongoing projects
-                if not approved_date and received_date:
-                    score += 10
-            
-            category_scores[category] = score
+        # Watchlist: Over $100K and after 2018 (but not strong or weak)
+        if estimated_amt >= 100000 and received_date and received_date >= datetime(2018, 1, 1):
+            return 'watchlist', 1
         
-        # Determine best category
-        if not category_scores:
-            return 'ignored', 0
-        
-        best_category = max(category_scores, key=category_scores.get)
-        best_score = category_scores[best_category]
-        
-        # Minimum thresholds
-        if best_score < 30:
-            return 'ignored', best_score
-        
-        return best_category, best_score
+        # Everything else goes to ignored
+        return 'ignored', 0
     
     def get_scoring_criteria(self) -> List[Dict]:
         """Get all scoring criteria"""

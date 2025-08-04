@@ -156,3 +156,10 @@ dmypy.json
 .Trashes
 ehthumbs.db
 Thumbs.db 
+
+# Node.js
+node_modules/
+
+# DB
+*.db-shm
+*.db-wal
