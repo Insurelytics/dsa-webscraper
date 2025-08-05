@@ -196,6 +196,54 @@ class DatabaseManager:
                 return cursor.fetchone() is not None
             finally:
                 conn.close()
+
+    def get_project_category(self, origin_id: str, app_id: str) -> str:
+        """Get the category of an existing project"""
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                cursor = conn.execute('''
+                    SELECT pc.category 
+                    FROM projects p 
+                    JOIN project_categories pc ON p.id = pc.project_id 
+                    WHERE p.origin_id = ? AND p.app_id = ?
+                ''', (origin_id, app_id))
+                result = cursor.fetchone()
+                return result[0] if result else None
+            finally:
+                conn.close()
+
+    def should_skip_project(self, origin_id: str, app_id: str, skip_level: str = None) -> bool:
+        """Check if a project should be skipped based on skip level"""
+        # If no skip level specified, skip all existing projects (current behavior)
+        if skip_level is None:
+            return self.project_exists(origin_id, app_id)
+        
+        # If project doesn't exist, don't skip it
+        if not self.project_exists(origin_id, app_id):
+            return False
+        
+        # Define category hierarchy (higher number = higher priority)
+        category_hierarchy = {
+            'ignored': 0,
+            'watchlist': 1,
+            'weakLeads': 2,
+            'strongLeads': 3
+        }
+        
+        # Get the project's category
+        project_category = self.get_project_category(origin_id, app_id)
+        
+        # If project has no category, treat as ignored
+        if project_category is None:
+            project_category = 'ignored'
+        
+        # Get hierarchy levels
+        skip_level_num = category_hierarchy.get(skip_level, 0)
+        project_level_num = category_hierarchy.get(project_category, 0)
+        
+        # Skip if project category is at or below the skip level
+        return project_level_num <= skip_level_num
     
     def get_scraped_projects_for_district(self, client_id: str) -> List[tuple]:
         """Get all scraped project IDs for a district"""

@@ -35,9 +35,12 @@ class DGSScraper:
         """Fetch and parse a webpage"""
         try:
             print(f"Fetching: {url}")
-            response = self.session.get(url)
+            response = self.session.get(url, timeout=30)  # 30 second timeout
             response.raise_for_status()
             return BeautifulSoup(response.content, 'html.parser')
+        except requests.exceptions.Timeout:
+            print(f"Timeout fetching {url}")
+            return None
         except Exception as e:
             print(f"Error fetching {url}: {e}")
             return None
@@ -262,10 +265,13 @@ class DGSScraper:
         # Clean up the data to create proper key-value pairs
         return self.clean_project_data(raw_details)
     
-    def scrape_county(self, county_id: str, max_projects: int = None, job_id: int = None):
+    def scrape_county(self, county_id: str, max_projects: int = None, job_id: int = None, skip_level: str = None):
         """Scrape all projects from a specific county"""
         self.current_job_id = job_id
         print(f"\n=== Scraping County {county_id} ===")
+        
+        if skip_level:
+            print(f"Skip level set to: {skip_level} (will skip projects in {skip_level} category and below)")
         
         if job_id:
             self.db.update_scraping_job(job_id, status='running')
@@ -276,11 +282,14 @@ class DGSScraper:
         project_count = 0
         district_count = 0
         total_projects_found = 0
+        skipped_count = 0
+        new_projects_processed = 0
         
         # First count total projects for progress tracking
         for district in districts:
             projects = self.extract_projects_from_district(district['client_id'])
             total_projects_found += len(projects)
+
         
         if job_id:
             self.db.update_scraping_job(job_id, total_projects=total_projects_found)
@@ -300,10 +309,10 @@ class DGSScraper:
                 
                 self.total_attempts += 1
                 
-                # Check if project already exists in database
-                if self.db.project_exists(project['origin_id'], project['app_id']):
-                    print(f"Skipping already scraped project {self.total_attempts}: {project['project_name'][:50]}...")
+                # Check if project should be skipped based on skip level
+                if self.db.should_skip_project(project['origin_id'], project['app_id'], skip_level):
                     self.success_count += 1  # Count skipped as success
+                    skipped_count += 1
                     if job_id:
                         self.db.update_scraping_job(
                             job_id, 
@@ -312,7 +321,8 @@ class DGSScraper:
                         )
                     continue
                 
-                print(f"Processing project {self.total_attempts}: {project['project_name'][:50]}...")
+                print(f"Processing NEW project {self.total_attempts}: {project['project_name'][:50]}...")
+                new_projects_processed += 1
                 
                 # Get detailed project information
                 details = self.extract_project_details(project['origin_id'], project['app_id'])
@@ -369,10 +379,14 @@ class DGSScraper:
                 print(f"WARNING: Success rate is low ({success_rate:.1f}%) - check data quality")
         
         print(f"\nCompleted county {county_id}.")
-        print(f"Total projects attempted: {self.total_attempts}")
-        print(f"Successfully processed: {self.success_count}")
+        print(f"Total projects found: {self.total_attempts}")
+        print(f"Projects skipped (existing/below skip level): {skipped_count}")
+        print(f"New projects processed: {new_projects_processed}")
+        print(f"Successfully saved: {self.success_count - skipped_count}")
         print(f"Failed: {len(self.failed_projects)}")
-        print(f"Final success rate: {self.get_success_rate():.1f}%")
+        if skip_level:
+            print(f"Skip level was set to: {skip_level} (only processing projects above this level)")
+        print(f"Overall success rate: {self.get_success_rate():.1f}%")
         
         # Mark job as completed
         if job_id:
@@ -395,10 +409,18 @@ def main():
     parser = argparse.ArgumentParser(description='DGS School Projects Scraper')
     parser.add_argument('county_id', nargs='?', default='34', help='County ID to scrape (default: 34)')
     parser.add_argument('--job-id', type=int, help='Job ID for progress tracking')
+    parser.add_argument('--skip-level', type=str, help='Skip projects in this category and below. Options: ignored, watchlist, weakLeads, strongLeads')
     
     args = parser.parse_args()
     county_id = args.county_id
     job_id = args.job_id
+    skip_level = args.skip_level
+    
+    # Validate skip level
+    valid_levels = ['ignored', 'watchlist', 'weakLeads', 'strongLeads']
+    if skip_level and skip_level not in valid_levels:
+        print(f"Error: Invalid skip level '{skip_level}'. Valid options are: {', '.join(valid_levels)}")
+        return
     
     db = DatabaseManager()
     scraper = DGSScraper(db)
@@ -409,9 +431,11 @@ def main():
     print(f"Scraping projects in County ID: {county_id}")
     if job_id:
         print(f"Job ID: {job_id}")
+    if skip_level:
+        print(f"Skipping projects in category: {skip_level} and below")
     
     try:
-        scraper.scrape_county(county_id, job_id=job_id)
+        scraper.scrape_county(county_id, job_id=job_id, skip_level=skip_level)
         
         project_count = db.get_project_count()
         if project_count > 0:

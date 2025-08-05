@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Download, Eye, RotateCcw, TestTube } from "lucide-react"
+import { Download, Eye, RotateCcw, TestTube, BarChart3 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { apiClient } from "@/lib/api"
@@ -49,6 +49,13 @@ interface CategoryResponse {
   projects: Project[]
 }
 
+interface StatsData {
+  total_projects: number
+  total_value: number
+  avg_value: number
+  last_updated?: string
+}
+
 export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsAndFiltersProps) {
   const [customFilters, setCustomFilters] = useState({
     minAmount: "",
@@ -57,6 +64,7 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
   })
   const [criteria, setCriteria] = useState<Record<string, any>>({})
   const [categoryData, setCategoryData] = useState<Record<string, CategoryData>>({})
+  const [statsData, setStatsData] = useState<StatsData>({ total_projects: 0, total_value: 0, avg_value: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [counties, setCounties] = useState<County[]>([])
@@ -70,11 +78,12 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
         setLoading(true)
         setError(null)
         
-        const [categories, countiesData, countiesWithDataResponse, criteriaData] = await Promise.all([
+        const [categories, countiesData, countiesWithDataResponse, criteriaData, stats] = await Promise.all([
           apiClient.getCategories(),
           apiClient.getCounties(),
           apiClient.getCountiesWithData(),
-          apiClient.getCriteria()
+          apiClient.getCriteria(),
+          apiClient.getStats()
         ])
         
         console.log('Loaded criteria from server:', criteriaData)
@@ -84,6 +93,19 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
         setCountiesWithData(countiesWithDataResponse as CountyWithData[])
         setCriteria(criteriaData as Record<string, any>)
         setOriginalCriteria(criteriaData as Record<string, any>)
+        
+        // Calculate total and average values from all categories
+        const categoryEntries = Object.values(categories as Record<string, CategoryData>)
+        const totalValue = categoryEntries.reduce((sum, cat) => sum + (cat.total_value || 0), 0)
+        const totalCount = categoryEntries.reduce((sum, cat) => sum + (cat.count || 0), 0)
+        const avgValue = totalCount > 0 ? totalValue / totalCount : 0
+        
+        setStatsData({
+          total_projects: (stats as any).total_projects || 0,
+          total_value: totalValue,
+          avg_value: avgValue,
+          last_updated: (stats as any).last_updated
+        })
       } catch (err) {
         console.error('Failed to fetch data:', err)
         setError('Failed to load data. Please check if the backend server is running.')
@@ -411,7 +433,8 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
             </CardHeader>
           </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Category Boxes */}
             {["strongLeads", "weakLeads", "watchlist"].map((category) => {
               const data = categoryData[category] || { count: 0, total_value: 0, avg_value: 0 }
               return (
@@ -425,8 +448,11 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{(data.count || 0).toLocaleString()}</div>
-                    <p className="text-xs text-muted-foreground mb-3">
+                    <p className="text-xs text-muted-foreground mb-1">
                       Total value: ${(data.total_value || 0).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Average value: ${(data.avg_value || 0).toLocaleString()}
                     </p>
                     <Button
                       variant="outline"
@@ -441,6 +467,31 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
                 </Card>
               )
             })}
+
+            {/* Total Projects Box */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <div className="flex items-center space-x-2">
+                  <BarChart3 className="w-4 h-4 text-muted-foreground" />
+                  <CardTitle className="text-sm font-medium">All Projects</CardTitle>
+                </div>
+                <Badge variant="outline">{statsData.total_projects.toLocaleString()}</Badge>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{statsData.total_projects.toLocaleString()}</div>
+                <br></br>
+                <br></br>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => handleDownload('all')}
+                >
+                  <Download className="w-3 h-3 mr-1" />
+                  Download CSV
+                </Button>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Custom Export Section */}
@@ -454,7 +505,7 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
-                  <Label htmlFor="custom-amount">Minimum Amount ($)</Label>
+                  <Label className="mb-2" htmlFor="custom-amount">Minimum Amount ($)</Label>
                   <Input
                     id="custom-amount"
                     type="number"
@@ -466,7 +517,7 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
                   />
                 </div>
                 <div>
-                  <Label htmlFor="custom-received">Received After</Label>
+                  <Label className="mb-2" htmlFor="custom-received">Received After</Label>
                   <Input
                     id="custom-received"
                     type="date"
@@ -477,7 +528,7 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
                   />
                 </div>
                 <div>
-                  <Label htmlFor="custom-county">County</Label>
+                  <Label className="mb-2" htmlFor="custom-county">County</Label>
                   <Select
                     value={customFilters.county}
                     onValueChange={(value) =>

@@ -14,7 +14,7 @@ import ResultsAndFilters from "@/components/results-and-filters"
 import { apiClient } from "@/lib/api"
 
 export default function DGSScraperDashboard() {
-  const [activeTab, setActiveTab] = useState("dashboard")
+  const [activeTab, setActiveTab] = useState("results")
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [dashboardStats, setDashboardStats] = useState({
     totalProjects: 0,
@@ -149,134 +149,18 @@ export default function DGSScraperDashboard() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-            <TabsTrigger value="counties">Counties</TabsTrigger>
-            <TabsTrigger value="schedule">Schedule</TabsTrigger>
-            <TabsTrigger value="jobs">Job Monitor</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="results">Results & Filters</TabsTrigger>
+            <TabsTrigger value="counties">Counties</TabsTrigger>
+            <TabsTrigger value="jobs">Job Monitor</TabsTrigger>
+            <TabsTrigger value="schedule">Schedule</TabsTrigger>
           </TabsList>
 
-          {/* Dashboard Tab */}
-          {activeTab === "dashboard" && (
-            <div className="space-y-6">
-              {/* Key Statistics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
-                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{dashboardStats.totalProjects.toLocaleString()}</div>
-                    <p className="text-xs text-muted-foreground">
-                      All scraped projects
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Strong Leads</CardTitle>
-                    <Badge className="bg-green-100 text-green-700">{dashboardStats.strongLeads}</Badge>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{dashboardStats.strongLeads.toLocaleString()}</div>
-                    <p className="text-xs text-muted-foreground">
-                      High-value projects
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Weak Leads</CardTitle>
-                    <Badge className="bg-yellow-100 text-yellow-700">{dashboardStats.weakLeads}</Badge>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{dashboardStats.weakLeads.toLocaleString()}</div>
-                    <p className="text-xs text-muted-foreground">
-                      Medium-value projects
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Watchlist</CardTitle>
-                    <Badge className="bg-blue-100 text-blue-700">{dashboardStats.watchlist}</Badge>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{dashboardStats.watchlist.toLocaleString()}</div>
-                    <p className="text-xs text-muted-foreground">
-                      Potential projects
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Recent Activity */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Recent Activity</CardTitle>
-                    <CardDescription>Latest scraping jobs and system activity</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">Last full scrape completed</p>
-                          <p className="text-xs text-muted-foreground">{dashboardStats.lastFullScrape || 'Never'}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-4">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">Database updated</p>
-                          <p className="text-xs text-muted-foreground">{dashboardStats.totalProjects} total projects</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-4">
-                        <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">Categories refreshed</p>
-                          <p className="text-xs text-muted-foreground">Projects automatically categorized</p>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>System Status</CardTitle>
-                    <CardDescription>Current system performance and health</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Running Jobs</span>
-                        <Badge variant={dashboardStats.runningJobs > 0 ? "default" : "secondary"}>
-                          {dashboardStats.runningJobs}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Completed Jobs</span>
-                        <Badge variant="outline">{dashboardStats.completedJobs}</Badge>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Failed Jobs</span>
-                        <Badge variant={dashboardStats.failedJobs > 0 ? "destructive" : "outline"}>
-                          {dashboardStats.failedJobs}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
+          {/* Results & Filters Tab */}
+          {activeTab === "results" && (
+            <ResultsAndFilters 
+              onSettingsChange={() => setHasUnsavedChanges(true)}
+            />
           )}
 
           {/* Counties Tab */}
@@ -286,19 +170,12 @@ export default function DGSScraperDashboard() {
             />
           )}
 
-          {/* Schedule Tab */}
-          {activeTab === "schedule" && (
-            <ScheduleSettings 
-              onSettingsChange={() => setHasUnsavedChanges(true)}
-            />
-          )}
-
           {/* Job Monitor Tab */}
           {activeTab === "jobs" && <JobMonitor />}
 
-          {/* Results & Filters Tab */}
-          {activeTab === "results" && (
-            <ResultsAndFilters 
+          {/* Schedule Tab */}
+          {activeTab === "schedule" && (
+            <ScheduleSettings 
               onSettingsChange={() => setHasUnsavedChanges(true)}
             />
           )}
