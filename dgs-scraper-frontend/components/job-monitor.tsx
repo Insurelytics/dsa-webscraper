@@ -90,7 +90,6 @@ export default function JobMonitor() {
       setActioningJobs(prev => new Set(prev).add(jobId))
       await apiClient.retryJob(jobId)
       await loadJobs(true) // Refresh jobs
-      alert('Job retried successfully. Check the job list for the new job.')
     } catch (error) {
       console.error('Failed to retry job:', error)
       alert('Failed to retry job. Please try again.')

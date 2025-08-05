@@ -63,6 +63,7 @@ function initDatabase() {
                     min_amount INTEGER DEFAULT 0,
                     received_after DATE,
                     approved_after DATE,
+                    force_no_approved_date BOOLEAN DEFAULT FALSE,
                     keywords TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

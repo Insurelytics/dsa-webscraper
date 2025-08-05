@@ -85,6 +85,7 @@ class DatabaseManager:
                         min_amount INTEGER DEFAULT 0,
                         received_after DATE,
                         approved_after DATE,
+                        force_no_approved_date BOOLEAN DEFAULT FALSE,
                         keywords TEXT,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -137,6 +138,7 @@ class DatabaseManager:
                 'min_amount': 1000000,
                 'received_after': '2024-01-01',
                 'approved_after': '2024-01-01',
+                'force_no_approved_date': False,
                 'keywords': 'new construction,modernization,major renovation'
             },
             {
@@ -144,6 +146,7 @@ class DatabaseManager:
                 'min_amount': 250000,
                 'received_after': '2023-06-01',
                 'approved_after': '2023-06-01',
+                'force_no_approved_date': False,
                 'keywords': 'renovation,upgrade,improvement'
             },
             {
@@ -151,6 +154,7 @@ class DatabaseManager:
                 'min_amount': 50000,
                 'received_after': '2023-01-01',
                 'approved_after': '2023-01-01',
+                'force_no_approved_date': False,
                 'keywords': 'addition,expansion,repair'
             },
             {
@@ -158,6 +162,7 @@ class DatabaseManager:
                 'min_amount': 0,
                 'received_after': '2020-01-01',
                 'approved_after': '2020-01-01',
+                'force_no_approved_date': False,
                 'keywords': 'maintenance,minor repair,inspection'
             }
         ]
@@ -171,13 +176,14 @@ class DatabaseManager:
             for criteria in default_criteria:
                 conn.execute('''
                     INSERT OR IGNORE INTO scoring_criteria 
-                    (category, min_amount, received_after, approved_after, keywords)
-                    VALUES (?, ?, ?, ?, ?)
+                    (category, min_amount, received_after, approved_after, force_no_approved_date, keywords)
+                    VALUES (?, ?, ?, ?, ?, ?)
                 ''', (
                     criteria['category'],
                     criteria['min_amount'],
                     criteria['received_after'],
                     criteria['approved_after'],
+                    criteria['force_no_approved_date'],
                     criteria['keywords']
                 ))
         finally:
@@ -339,6 +345,7 @@ class DatabaseManager:
         """Calculate the category using dynamic criteria from database"""
         estimated_amt = self._extract_amount(project_data.get('Estimated Amt', '0')) or 0
         received_date = self._parse_date(project_data.get('Received Date', ''))
+        approved_date = self._parse_date(project_data.get('Approved Date', ''))
         
         try:
             # Get current criteria from database
@@ -352,9 +359,9 @@ class DatabaseManager:
             # If no criteria exist, use defaults
             if not criteria:
                 criteria = {
-                    'strongLeads': {'min_amount': 2000000, 'received_after': '2023-01-01'},
-                    'weakLeads': {'min_amount': 1000000, 'received_after': '2020-01-01'},
-                    'watchlist': {'min_amount': 100000, 'received_after': '2018-01-01'}
+                    'strongLeads': {'min_amount': 2000000, 'received_after': '2023-01-01', 'force_no_approved_date': False},
+                    'weakLeads': {'min_amount': 1000000, 'received_after': '2020-01-01', 'force_no_approved_date': False},
+                    'watchlist': {'min_amount': 100000, 'received_after': '2018-01-01', 'force_no_approved_date': False}
                 }
             
             # Check strongLeads first
@@ -362,8 +369,11 @@ class DatabaseManager:
                 min_amount = criteria['strongLeads'].get('min_amount', 0)
                 received_after_str = criteria['strongLeads'].get('received_after')
                 received_after = self._parse_date(received_after_str) if received_after_str else None
+                force_no_approved_date = criteria['strongLeads'].get('force_no_approved_date', False)
                 
-                if estimated_amt >= min_amount and (not received_after or (received_date and received_date >= received_after)):
+                if (estimated_amt >= min_amount and 
+                    (not received_after or (received_date and received_date >= received_after)) and
+                    (not force_no_approved_date or not approved_date)):
                     return 'strongLeads', 1
             
             # Check weakLeads next
@@ -371,8 +381,11 @@ class DatabaseManager:
                 min_amount = criteria['weakLeads'].get('min_amount', 0)
                 received_after_str = criteria['weakLeads'].get('received_after')
                 received_after = self._parse_date(received_after_str) if received_after_str else None
+                force_no_approved_date = criteria['weakLeads'].get('force_no_approved_date', False)
                 
-                if estimated_amt >= min_amount and (not received_after or (received_date and received_date >= received_after)):
+                if (estimated_amt >= min_amount and 
+                    (not received_after or (received_date and received_date >= received_after)) and
+                    (not force_no_approved_date or not approved_date)):
                     return 'weakLeads', 1
             
             # Check watchlist next
@@ -380,8 +393,11 @@ class DatabaseManager:
                 min_amount = criteria['watchlist'].get('min_amount', 0)
                 received_after_str = criteria['watchlist'].get('received_after')
                 received_after = self._parse_date(received_after_str) if received_after_str else None
+                force_no_approved_date = criteria['watchlist'].get('force_no_approved_date', False)
                 
-                if estimated_amt >= min_amount and (not received_after or (received_date and received_date >= received_after)):
+                if (estimated_amt >= min_amount and 
+                    (not received_after or (received_date and received_date >= received_after)) and
+                    (not force_no_approved_date or not approved_date)):
                     return 'watchlist', 1
             
             # Everything else goes to ignored
@@ -405,7 +421,7 @@ class DatabaseManager:
             conn = self._get_connection()
             try:
                 cursor = conn.execute('''
-                    SELECT category, min_amount, received_after, approved_after, keywords
+                    SELECT category, min_amount, received_after, approved_after, force_no_approved_date, keywords
                     FROM scoring_criteria
                     ORDER BY category
                 ''')
@@ -417,7 +433,8 @@ class DatabaseManager:
                         'min_amount': row[1],
                         'received_after': row[2],
                         'approved_after': row[3],
-                        'keywords': row[4]
+                        'force_no_approved_date': row[4],
+                        'keywords': row[5]
                     })
                 return criteria
             finally:

@@ -85,13 +85,6 @@ export default function CountySelection({ onSettingsChange }: CountySelectionPro
 
   const handleCountyToggle = async (county: County) => {
     const newEnabled = !county.enabled
-    
-    if (!newEnabled) {
-      // Show confirmation when disabling
-      if (!confirm(`Are you sure you want to disable ${county.name} County? This will exclude it from scheduled scraping.`)) {
-        return
-      }
-    }
 
     try {
       await apiClient.updateCountyStatus(county.id, newEnabled)

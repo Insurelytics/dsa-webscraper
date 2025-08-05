@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RotateCcw, TestTube } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Switch } from "@/components/ui/switch"
 import { apiClient } from "@/lib/api"
 
 interface ScoringCriteriaProps {
@@ -42,7 +43,7 @@ export default function ScoringCriteria({ onSettingsChange }: ScoringCriteriaPro
     fetchData()
   }, [])
 
-  const updateCriteria = (category: string, field: string, value: string | number) => {
+  const updateCriteria = (category: string, field: string, value: string | number | boolean) => {
     setCriteria((prev) => ({
       ...prev,
       [category]: {
@@ -160,10 +161,20 @@ export default function ScoringCriteria({ onSettingsChange }: ScoringCriteriaPro
           </div>
         </div>
 
+        <div className="flex items-center space-x-2">
+          <Switch
+            id={`${category}-no-approved`}
+            checked={data?.requireNoApprovedDate || false}
+            onCheckedChange={(checked) => updateCriteria(category, "requireNoApprovedDate", checked)}
+          />
+          <Label htmlFor={`${category}-no-approved`}>Force no approved date (not yet started)</Label>
+        </div>
+
         <div className="p-4 bg-gray-50 rounded-lg">
           <h4 className="font-medium mb-2">Current Logic:</h4>
           <p className="text-sm text-gray-600">
             Projects with estimated amount ≥ ${(data?.minAmount || 0).toLocaleString()} AND received after {data?.receivedAfter || 'any date'}{" "}
+            {data?.requireNoApprovedDate ? 'AND no approved date (not yet started) ' : ''}
             will be categorized as {getCategoryName(category).toLowerCase()}.
           </p>
         </div>

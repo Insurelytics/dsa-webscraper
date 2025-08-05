@@ -130,15 +130,16 @@ function getAllScoringCriteria() {
             rows.forEach(row => {
                 criteria[row.category] = {
                     minAmount: row.min_amount,
-                    receivedAfter: row.received_after
+                    receivedAfter: row.received_after,
+                    requireNoApprovedDate: row.force_no_approved_date || false
                 };
             });
             
             // If no criteria exist, return defaults for strongLeads, weakLeads, watchlist
             if (Object.keys(criteria).length === 0) {
-                criteria.strongLeads = { minAmount: 2000000, receivedAfter: "2023-01-01" };
-                criteria.weakLeads = { minAmount: 1000000, receivedAfter: "2020-01-01" };
-                criteria.watchlist = { minAmount: 100000, receivedAfter: "2018-01-01" };
+                criteria.strongLeads = { minAmount: 2000000, receivedAfter: "2023-01-01", requireNoApprovedDate: false };
+                criteria.weakLeads = { minAmount: 1000000, receivedAfter: "2020-01-01", requireNoApprovedDate: false };
+                criteria.watchlist = { minAmount: 100000, receivedAfter: "2018-01-01", requireNoApprovedDate: false };
             }
             
             resolve(criteria);
@@ -158,9 +159,9 @@ function updateScoringCriteria(criteria) {
                 const promise = new Promise((res, rej) => {
                     db.run(`
                         INSERT OR REPLACE INTO scoring_criteria 
-                        (category, min_amount, received_after, updated_at)
-                        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                    `, [category, criteria[category].minAmount, criteria[category].receivedAfter], (err) => {
+                        (category, min_amount, received_after, force_no_approved_date, updated_at)
+                        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    `, [category, criteria[category].minAmount, criteria[category].receivedAfter, criteria[category].requireNoApprovedDate ? 1 : 0], (err) => {
                         if (err) rej(err);
                         else res();
                     });
@@ -178,6 +179,7 @@ function updateScoringCriteria(criteria) {
 async function categorizeProject(projectData) {
     const estimatedAmt = extractAmount(projectData['Estimated Amt']) || 0;
     const receivedDate = parseDate(projectData['Received Date']);
+    const approvedDate = parseDate(projectData['Approved Date']);
     
     try {
         // Get current criteria from database
@@ -187,8 +189,11 @@ async function categorizeProject(projectData) {
         if (criteria.strongLeads) {
             const minAmount = criteria.strongLeads.minAmount || 0;
             const receivedAfter = criteria.strongLeads.receivedAfter ? new Date(criteria.strongLeads.receivedAfter) : null;
+            const requireNoApprovedDate = criteria.strongLeads.requireNoApprovedDate;
             
-            if (estimatedAmt >= minAmount && (!receivedAfter || (receivedDate && receivedDate >= receivedAfter))) {
+            if (estimatedAmt >= minAmount && 
+                (!receivedAfter || (receivedDate && receivedDate >= receivedAfter)) &&
+                (!requireNoApprovedDate || !approvedDate)) {
                 return { category: 'strongLeads', score: 1 };
             }
         }
@@ -197,8 +202,11 @@ async function categorizeProject(projectData) {
         if (criteria.weakLeads) {
             const minAmount = criteria.weakLeads.minAmount || 0;
             const receivedAfter = criteria.weakLeads.receivedAfter ? new Date(criteria.weakLeads.receivedAfter) : null;
+            const requireNoApprovedDate = criteria.weakLeads.requireNoApprovedDate;
             
-            if (estimatedAmt >= minAmount && (!receivedAfter || (receivedDate && receivedDate >= receivedAfter))) {
+            if (estimatedAmt >= minAmount && 
+                (!receivedAfter || (receivedDate && receivedDate >= receivedAfter)) &&
+                (!requireNoApprovedDate || !approvedDate)) {
                 return { category: 'weakLeads', score: 1 };
             }
         }
@@ -207,8 +215,11 @@ async function categorizeProject(projectData) {
         if (criteria.watchlist) {
             const minAmount = criteria.watchlist.minAmount || 0;
             const receivedAfter = criteria.watchlist.receivedAfter ? new Date(criteria.watchlist.receivedAfter) : null;
+            const requireNoApprovedDate = criteria.watchlist.requireNoApprovedDate;
             
-            if (estimatedAmt >= minAmount && (!receivedAfter || (receivedDate && receivedDate >= receivedAfter))) {
+            if (estimatedAmt >= minAmount && 
+                (!receivedAfter || (receivedDate && receivedDate >= receivedAfter)) &&
+                (!requireNoApprovedDate || !approvedDate)) {
                 return { category: 'watchlist', score: 1 };
             }
         }

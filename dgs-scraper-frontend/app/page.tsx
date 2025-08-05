@@ -32,6 +32,19 @@ export default function DGSScraperDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [saveInProgress, setSaveInProgress] = useState(false)
 
+  // Handle page unload warning
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasUnsavedChanges])
+
   useEffect(() => {
     const fetchDashboardData = async (silent = false) => {
       try {
@@ -143,9 +156,26 @@ export default function DGSScraperDashboard() {
                   Unsaved Changes
                 </Badge>
               )}
-              <Button onClick={handleSaveChanges} disabled={!hasUnsavedChanges || saveInProgress} className="flex items-center">
-                <Save className="w-4 h-4 mr-2" />
-                {saveInProgress ? 'Saving...' : 'Save All Changes'}
+              <Button 
+                onClick={handleSaveChanges} 
+                disabled={!hasUnsavedChanges || saveInProgress} 
+                className={`${
+                  hasUnsavedChanges && !saveInProgress
+                    ? "bg-blue-600 hover:bg-blue-700 shadow-lg relative overflow-hidden"
+                    : "bg-gray-400 cursor-not-allowed"
+                } transition-all duration-200`}
+              >
+                {hasUnsavedChanges && !saveInProgress && (
+                  <div
+                    className="absolute inset-0 -top-[1px] -bottom-[1px] bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"
+                    style={{
+                      background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)",
+                      animation: "shimmer 2s infinite",
+                    }}
+                  />
+                )}
+                <Save className="w-4 h-4 mr-2 relative z-10" />
+                <span className="relative z-10">{saveInProgress ? 'Saving...' : 'Save All Changes'}</span>
               </Button>
             </div>
           </div>
@@ -161,35 +191,37 @@ export default function DGSScraperDashboard() {
           </TabsList>
 
           {/* Results & Filters Tab */}
-          {activeTab === "results" && (
+          <div className={`${activeTab !== "results" ? "hidden" : ""}`}>
             <ResultsAndFilters 
               onSettingsChange={() => setHasUnsavedChanges(true)}
             />
-          )}
+          </div>
 
           {/* Scoring Criteria Tab */}
-          {activeTab === "criteria" && (
+          <div className={`${activeTab !== "criteria" ? "hidden" : ""}`}>
             <ScoringCriteria 
               onSettingsChange={() => setHasUnsavedChanges(true)}
             />
-          )}
+          </div>
 
           {/* Counties Tab */}
-          {activeTab === "counties" && (
+          <div className={`${activeTab !== "counties" ? "hidden" : ""}`}>
             <CountySelection 
               onSettingsChange={() => setHasUnsavedChanges(true)}
             />
-          )}
+          </div>
 
           {/* Job Monitor Tab */}
-          {activeTab === "jobs" && <JobMonitor />}
+          <div className={`${activeTab !== "jobs" ? "hidden" : ""}`}>
+            <JobMonitor />
+          </div>
 
           {/* Schedule Tab */}
-          {activeTab === "schedule" && (
+          <div className={`${activeTab !== "schedule" ? "hidden" : ""}`}>
             <ScheduleSettings 
               onSettingsChange={() => setHasUnsavedChanges(true)}
             />
-          )}
+          </div>
         </Tabs>
       </div>
     </div>
