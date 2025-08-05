@@ -62,7 +62,6 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
     receivedAfter: "",
     county: "All Counties",
   })
-  const [criteria, setCriteria] = useState<Record<string, any>>({})
   const [categoryData, setCategoryData] = useState<Record<string, CategoryData>>({})
   const [statsData, setStatsData] = useState<StatsData>({ total_projects: 0, total_value: 0, avg_value: 0 })
   const [loading, setLoading] = useState(true)
@@ -70,7 +69,6 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
   const [counties, setCounties] = useState<County[]>([])
   const [countiesWithData, setCountiesWithData] = useState<CountyWithData[]>([])
   const [customExportLoading, setCustomExportLoading] = useState(false)
-  const [originalCriteria, setOriginalCriteria] = useState<Record<string, any>>({})
 
   useEffect(() => {
     const fetchData = async () => {
@@ -78,21 +76,16 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
         setLoading(true)
         setError(null)
         
-        const [categories, countiesData, countiesWithDataResponse, criteriaData, stats] = await Promise.all([
+        const [categories, countiesData, countiesWithDataResponse, stats] = await Promise.all([
           apiClient.getCategories(),
           apiClient.getCounties(),
           apiClient.getCountiesWithData(),
-          apiClient.getCriteria(),
           apiClient.getStats()
         ])
-        
-        console.log('Loaded criteria from server:', criteriaData)
         
         setCategoryData(categories as Record<string, CategoryData>)
         setCounties(countiesData as County[])
         setCountiesWithData(countiesWithDataResponse as CountyWithData[])
-        setCriteria(criteriaData as Record<string, any>)
-        setOriginalCriteria(criteriaData as Record<string, any>)
         
         // Calculate total and average values from all categories
         const categoryEntries = Object.values(categories as Record<string, CategoryData>)
@@ -117,48 +110,16 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
     fetchData()
   }, [])
 
-  const updateCriteria = (category: string, field: string, value: string | number) => {
-    setCriteria((prev) => ({
-      ...prev,
-      [category]: {
-        ...prev[category as keyof typeof prev],
-        [field]: value,
-      },
-    }))
-    onSettingsChange(true)
-  }
-
-  const handleReset = async () => {
-    try {
-      console.log('Resetting criteria to:', originalCriteria)
-      setCriteria(originalCriteria)
-      onSettingsChange(false)
-    } catch (error) {
-      console.error('Error resetting criteria:', error)
-      alert('Failed to reset criteria. Please try again.')
-    }
-  }
-
   const handleSaveChanges = async () => {
     try {
-      console.log('Saving criteria:', criteria)
-      console.log('Saving criteria and applying changes...')
-      const response = await apiClient.applyCriteria(criteria) as { success: boolean, message: string, recategorized_count?: number }
-      console.log('Criteria applied successfully:', response)
-      
-      // Update original criteria to new values
-      setOriginalCriteria(criteria)
-      onSettingsChange(false)  // Clear the unsaved changes indicator
-      
       // Refresh category data to see updated counts
       const updatedCategories = await apiClient.getCategories()
       setCategoryData(updatedCategories as Record<string, CategoryData>)
       
-      alert(`Criteria updated successfully! ${response.recategorized_count || 0} projects were recategorized.`)
+      onSettingsChange(false)  // Clear the unsaved changes indicator
     } catch (error) {
-      console.error('Error applying criteria:', error)
-      alert('Failed to apply criteria changes. Please try again.')
-      throw error; // Re-throw so parent knows save failed
+      console.error('Error refreshing data:', error)
+      throw error;
     }
   }
 
@@ -166,58 +127,6 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
   useEffect(() => {
     (window as any).resultsAndFiltersSave = handleSaveChanges;
   }, [handleSaveChanges])
-
-  const handleTest = () => {
-    console.log("Testing criteria with current data...")
-  }
-
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case "strongLeads":
-        return "bg-green-500"
-      case "weakLeads":
-        return "bg-yellow-500"
-      case "watchlist":
-        return "bg-blue-500"
-      case "ignored":
-        return "bg-gray-500"
-      default:
-        return "bg-gray-400"
-    }
-  }
-
-  const getCategoryName = (category: string) => {
-    switch (category) {
-      case "strongLeads":
-        return "Strong Leads"
-      case "weakLeads":
-        return "Weak Leads"
-      case "watchlist":
-        return "Watchlist"
-      case "ignored":
-        return "Ignored"
-      default:
-        return category
-    }
-  }
-
-  const handleDownload = async (category: string) => {
-    try {
-      console.log(`Downloading ${category} projects...`)
-      const response = await apiClient.getCategoryProjects(category, 10000) as CategoryResponse
-      const projects = response.projects
-      
-      if (projects.length === 0) {
-        alert(`No projects found in ${getCategoryName(category)} category`)
-        return
-      }
-      
-      downloadProjectsAsCSV(projects, `${category}_projects.csv`)
-    } catch (error) {
-      console.error('Error downloading projects:', error)
-      alert('Failed to download projects. Please try again.')
-    }
-  }
 
   const handleCustomDownload = async () => {
     setCustomExportLoading(true)
@@ -342,54 +251,53 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
     }
   }
 
-  const renderCriteriaForm = (category: string, data: any) => (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center space-x-3">
-          <div className={`w-4 h-4 rounded-full ${getCategoryColor(category)}`}></div>
-          <CardTitle>{getCategoryName(category)} Criteria</CardTitle>
-        </div>
-        <CardDescription>
-          Configure the rules for categorizing projects as {getCategoryName(category).toLowerCase()}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor={`${category}-amount`}>Minimum Amount ($)</Label>
-            <Input
-              id={`${category}-amount`}
-              type="number"
-              value={data?.minAmount || ''}
-              onChange={(e) => {
-                const value = e.target.value;
-                const numValue = value === '' ? 0 : parseInt(value);
-                updateCriteria(category, "minAmount", numValue);
-              }}
-              placeholder="1000000"
-            />
-          </div>
-          <div>
-            <Label htmlFor={`${category}-received`}>Received After</Label>
-            <Input
-              id={`${category}-received`}
-              type="date"
-              value={data?.receivedAfter || ''}
-              onChange={(e) => updateCriteria(category, "receivedAfter", e.target.value)}
-            />
-          </div>
-        </div>
+  const getCategoryColor = (category: string) => {
+    switch (category) {
+      case "strongLeads":
+        return "bg-green-500"
+      case "weakLeads":
+        return "bg-yellow-500"
+      case "watchlist":
+        return "bg-blue-500"
+      case "ignored":
+        return "bg-gray-500"
+      default:
+        return "bg-gray-400"
+    }
+  }
 
-        <div className="p-4 bg-gray-50 rounded-lg">
-          <h4 className="font-medium mb-2">Current Logic:</h4>
-          <p className="text-sm text-gray-600">
-            Projects with estimated amount ≥ ${(data?.minAmount || 0).toLocaleString()} AND received after {data?.receivedAfter || 'any date'}{" "}
-            will be categorized as {getCategoryName(category).toLowerCase()}.
-          </p>
-        </div>
-      </CardContent>
-    </Card>
-  )
+  const getCategoryName = (category: string) => {
+    switch (category) {
+      case "strongLeads":
+        return "Strong Leads"
+      case "weakLeads":
+        return "Weak Leads"
+      case "watchlist":
+        return "Watchlist"
+      case "ignored":
+        return "Ignored"
+      default:
+        return category
+    }
+  }
+
+  const handleDownload = async (category: string) => {
+    try {
+      console.log(`Downloading ${category} projects...`)
+      const response = await apiClient.getCategoryProjects(category, 10000) as CategoryResponse
+      const projects = response.projects
+      
+      if (projects.length === 0) {
+        alert(`No projects found in ${getCategoryName(category)} category`)
+        return
+      }
+      
+      downloadProjectsAsCSV(projects, `${category}_projects.csv`)
+    } catch (error) {
+      console.error('Error downloading projects:', error)
+      alert('Failed to download projects. Please try again.')
+    }
+  }
 
   if (loading) {
     return (
@@ -416,197 +324,145 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
 
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="results" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="results">Project Results</TabsTrigger>
-          <TabsTrigger value="scoring">Scoring Criteria</TabsTrigger>
-        </TabsList>
+      <Card>
+        <CardHeader>
+          <CardTitle>Project Categories</CardTitle>
+          <CardDescription>
+            Projects are automatically categorized based on your scoring criteria. Download data for each category
+            or create custom exports.
+          </CardDescription>
+        </CardHeader>
+      </Card>
 
-        <TabsContent value="results" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Project Categories</CardTitle>
-              <CardDescription>
-                Projects are automatically categorized based on your scoring criteria. Download data for each category
-                or create custom exports.
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Category Boxes */}
-            {["strongLeads", "weakLeads", "watchlist"].map((category) => {
-              const data = categoryData[category] || { count: 0, total_value: 0, avg_value: 0 }
-              return (
-                <Card key={category}>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <div className="flex items-center space-x-2">
-                      <div className={`w-3 h-3 rounded-full ${getCategoryColor(category)}`}></div>
-                      <CardTitle className="text-sm font-medium">{getCategoryName(category)}</CardTitle>
-                    </div>
-                    <Badge variant="outline">{data.count || 0}</Badge>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{(data.count || 0).toLocaleString()}</div>
-                    <p className="text-xs text-muted-foreground mb-1">
-                      Total value: ${(data.total_value || 0).toLocaleString()}
-                    </p>
-                    <p className="text-xs text-muted-foreground mb-3">
-                      Average value: ${(data.avg_value || 0).toLocaleString()}
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => handleDownload(category)}
-                    >
-                      <Download className="w-3 h-3 mr-1" />
-                      Download CSV
-                    </Button>
-                  </CardContent>
-                </Card>
-              )
-            })}
-
-            {/* Total Projects Box */}
-            <Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Category Boxes */}
+        {["strongLeads", "weakLeads", "watchlist"].map((category) => {
+          const data = categoryData[category] || { count: 0, total_value: 0, avg_value: 0 }
+          return (
+            <Card key={category}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <div className="flex items-center space-x-2">
-                  <BarChart3 className="w-4 h-4 text-muted-foreground" />
-                  <CardTitle className="text-sm font-medium">All Projects</CardTitle>
+                  <div className={`w-3 h-3 rounded-full ${getCategoryColor(category)}`}></div>
+                  <CardTitle className="text-sm font-medium">{getCategoryName(category)}</CardTitle>
                 </div>
-                <Badge variant="outline">{statsData.total_projects.toLocaleString()}</Badge>
+                <Badge variant="outline">{data.count || 0}</Badge>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{statsData.total_projects.toLocaleString()}</div>
-                <br></br>
-                <br></br>
+                <div className="text-2xl font-bold">{(data.count || 0).toLocaleString()}</div>
+                <p className="text-xs text-muted-foreground mb-1">
+                  Total value: ${(data.total_value || 0).toLocaleString()}
+                </p>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Average value: ${(data.avg_value || 0).toLocaleString()}
+                </p>
                 <Button
                   variant="outline"
                   size="sm"
                   className="w-full"
-                  onClick={() => handleDownload('all')}
+                  onClick={() => handleDownload(category)}
                 >
                   <Download className="w-3 h-3 mr-1" />
                   Download CSV
                 </Button>
               </CardContent>
             </Card>
+          )
+        })}
+
+        {/* All Projects Box */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <div className="flex items-center space-x-2">
+              <BarChart3 className="w-4 h-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">All Projects</CardTitle>
+            </div>
+            <Badge variant="outline">{statsData.total_projects.toLocaleString()}</Badge>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{statsData.total_projects.toLocaleString()}</div>
+            <br></br>
+            <br></br>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => handleDownload('all')}
+            >
+              <Download className="w-3 h-3 mr-1" />
+              Download CSV
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Custom Export Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Custom Export</CardTitle>
+          <CardDescription>
+            Create a custom export with your own filtering criteria
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <Label className="mb-2" htmlFor="custom-amount">Minimum Amount ($)</Label>
+              <Input
+                id="custom-amount"
+                type="number"
+                value={customFilters.minAmount}
+                onChange={(e) =>
+                  setCustomFilters((prev) => ({ ...prev, minAmount: e.target.value }))
+                }
+                placeholder="Enter minimum amount"
+              />
+            </div>
+            <div>
+              <Label className="mb-2" htmlFor="custom-received">Received After</Label>
+              <Input
+                id="custom-received"
+                type="date"
+                value={customFilters.receivedAfter}
+                onChange={(e) =>
+                  setCustomFilters((prev) => ({ ...prev, receivedAfter: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <Label className="mb-2" htmlFor="custom-county">County</Label>
+              <Select
+                value={customFilters.county}
+                onValueChange={(value) =>
+                  setCustomFilters((prev) => ({ ...prev, county: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select county" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All Counties">All Counties</SelectItem>
+                  {countiesWithData.map((county, index) => (
+                    <SelectItem key={index} value={county.name}>
+                      {county.name} ({county.project_count} projects)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          {/* Custom Export Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Custom Export</CardTitle>
-              <CardDescription>
-                Create a custom export with your own filtering criteria
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div>
-                  <Label className="mb-2" htmlFor="custom-amount">Minimum Amount ($)</Label>
-                  <Input
-                    id="custom-amount"
-                    type="number"
-                    value={customFilters.minAmount}
-                    onChange={(e) =>
-                      setCustomFilters((prev) => ({ ...prev, minAmount: e.target.value }))
-                    }
-                    placeholder="Enter minimum amount"
-                  />
-                </div>
-                <div>
-                  <Label className="mb-2" htmlFor="custom-received">Received After</Label>
-                  <Input
-                    id="custom-received"
-                    type="date"
-                    value={customFilters.receivedAfter}
-                    onChange={(e) =>
-                      setCustomFilters((prev) => ({ ...prev, receivedAfter: e.target.value }))
-                    }
-                  />
-                </div>
-                <div>
-                  <Label className="mb-2" htmlFor="custom-county">County</Label>
-                  <Select
-                    value={customFilters.county}
-                    onValueChange={(value) =>
-                      setCustomFilters((prev) => ({ ...prev, county: value }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select county" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="All Counties">All Counties</SelectItem>
-                      {countiesWithData.map((county, index) => (
-                        <SelectItem key={index} value={county.name}>
-                          {county.name} ({county.project_count} projects)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <Button 
-                  onClick={handleCustomDownload}
-                  disabled={customExportLoading}
-                  className="flex items-center"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  {customExportLoading ? 'Generating...' : 'Download Custom Export'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="scoring" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Scoring Criteria</CardTitle>
-              <CardDescription>
-                Configure how projects are automatically categorized based on amount, dates, and other criteria.
-                Changes will be applied to all existing and future projects.
-              </CardDescription>
-              <div className="flex space-x-2">
-                <Button onClick={handleTest} variant="outline" size="sm">
-                  <TestTube className="w-4 h-4 mr-2" />
-                  Test Criteria
-                </Button>
-                <Button onClick={handleReset} variant="outline" size="sm">
-                  <RotateCcw className="w-4 h-4 mr-2" />
-                  Reset to Default
-                </Button>
-              </div>
-            </CardHeader>
-          </Card>
-
-          <Tabs defaultValue="strongLeads" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="strongLeads" className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                Strong Leads
-              </TabsTrigger>
-              <TabsTrigger value="weakLeads" className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                Weak Leads
-              </TabsTrigger>
-              <TabsTrigger value="watchlist" className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                Watchlist
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="strongLeads">{renderCriteriaForm("strongLeads", criteria.strongLeads)}</TabsContent>
-            <TabsContent value="weakLeads">{renderCriteriaForm("weakLeads", criteria.weakLeads)}</TabsContent>
-            <TabsContent value="watchlist">{renderCriteriaForm("watchlist", criteria.watchlist)}</TabsContent>
-          </Tabs>
-        </TabsContent>
-      </Tabs>
+          <div className="flex justify-end">
+            <Button 
+              onClick={handleCustomDownload}
+              disabled={customExportLoading}
+              className="flex items-center"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              {customExportLoading ? 'Generating...' : 'Download Custom Export'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

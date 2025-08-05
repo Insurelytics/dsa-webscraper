@@ -11,6 +11,7 @@ import CountySelection from "@/components/county-selection"
 import ScheduleSettings from "@/components/schedule-settings"
 import JobMonitor from "@/components/job-monitor"
 import ResultsAndFilters from "@/components/results-and-filters"
+import ScoringCriteria from "@/components/scoring-criteria"
 import { apiClient } from "@/lib/api"
 
 export default function DGSScraperDashboard() {
@@ -85,6 +86,8 @@ export default function DGSScraperDashboard() {
       // Call the appropriate save function based on active tab
       if (activeTab === "results" && (window as any).resultsAndFiltersSave) {
         await (window as any).resultsAndFiltersSave();
+      } else if (activeTab === "criteria" && (window as any).scoringCriteriaSave) {
+        await (window as any).scoringCriteriaSave();
       }
       // Add other tab save functions here as needed
       
@@ -149,8 +152,9 @@ export default function DGSScraperDashboard() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="results">Results & Filters</TabsTrigger>
+            <TabsTrigger value="criteria">Scoring Criteria</TabsTrigger>
             <TabsTrigger value="counties">Counties</TabsTrigger>
             <TabsTrigger value="jobs">Job Monitor</TabsTrigger>
             <TabsTrigger value="schedule">Schedule</TabsTrigger>
@@ -159,6 +163,13 @@ export default function DGSScraperDashboard() {
           {/* Results & Filters Tab */}
           {activeTab === "results" && (
             <ResultsAndFilters 
+              onSettingsChange={() => setHasUnsavedChanges(true)}
+            />
+          )}
+
+          {/* Scoring Criteria Tab */}
+          {activeTab === "criteria" && (
+            <ScoringCriteria 
               onSettingsChange={() => setHasUnsavedChanges(true)}
             />
           )}
