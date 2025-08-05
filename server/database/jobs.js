@@ -4,10 +4,33 @@ function createScrapingJob(countyId) {
     return new Promise((resolve, reject) => {
         const startedAt = new Date().toISOString();
         db.run('INSERT INTO scraping_jobs (county_id, status, started_at) VALUES (?, ?, ?)', 
+               [countyId, 'pending', startedAt], 
+               function(err) {
+                   if (err) reject(err);
+                   else resolve(this.lastID);
+               });
+    });
+}
+
+function createScrapingJobRunning(countyId) {
+    return new Promise((resolve, reject) => {
+        const startedAt = new Date().toISOString();
+        db.run('INSERT INTO scraping_jobs (county_id, status, started_at) VALUES (?, ?, ?)', 
                [countyId, 'running', startedAt], 
                function(err) {
                    if (err) reject(err);
                    else resolve(this.lastID);
+               });
+    });
+}
+
+function getNextPendingJob() {
+    return new Promise((resolve, reject) => {
+        db.get('SELECT * FROM scraping_jobs WHERE status = ? ORDER BY started_at ASC LIMIT 1', 
+               ['pending'], 
+               (err, row) => {
+                   if (err) reject(err);
+                   else resolve(row);
                });
     });
 }
@@ -53,7 +76,9 @@ function getAllJobs(limit = 50) {
 
 module.exports = {
     createScrapingJob,
+    createScrapingJobRunning,
     updateScrapingJob,
     getJobStatus,
-    getAllJobs
+    getAllJobs,
+    getNextPendingJob
 }; 

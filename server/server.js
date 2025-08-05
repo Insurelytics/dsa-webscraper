@@ -13,7 +13,7 @@ app.use(cors());
 const statsRoutes = require('./routes/stats');
 const criteriaRoutes = require('./routes/criteria');
 const countiesRoutes = require('./routes/counties');
-const { router: scrapingRoutes, cleanup: cleanupScraping } = require('./routes/scraping');
+const scrapingRoutes = require('./routes/scraping');
 
 // Home page
 app.get('/', (req, res) => {
@@ -42,14 +42,12 @@ app.use('/', scrapingRoutes);
 // Error handling
 process.on('SIGINT', () => {
     console.log('Received SIGINT, shutting down gracefully...');
-    cleanupScraping();
     db.close();
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
     console.log('Received SIGTERM, shutting down gracefully...');
-    cleanupScraping();
     db.close();
     process.exit(0);
 });

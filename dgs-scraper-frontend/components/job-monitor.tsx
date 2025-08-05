@@ -11,7 +11,7 @@ import { apiClient } from "@/lib/api"
 interface Job {
   id: number
   county_id: string
-  county_name: string
+  county_name?: string
   status: string
   started_at: string
   completed_at: string | null
@@ -19,6 +19,11 @@ interface Job {
   processed_projects: number
   success_count: number
   error_message: string | null
+}
+
+interface StopJobResponse {
+  status: string
+  message: string
 }
 
 export default function JobMonitor() {
@@ -50,7 +55,7 @@ export default function JobMonitor() {
         setError(null)
       }
       
-      const jobsData = await apiClient.getAllJobs(100)
+      const jobsData = await apiClient.getAllJobs(100) as Job[]
       setJobs(jobsData)
     } catch (err) {
       console.error('Failed to load jobs:', err)
@@ -69,8 +74,14 @@ export default function JobMonitor() {
 
     try {
       setActioningJobs(prev => new Set(prev).add(jobId))
-      await apiClient.stopJob(jobId)
-      await loadJobs(true) // Refresh jobs
+      const response = await apiClient.stopJob(jobId) as StopJobResponse
+      
+      // Handle response - refresh jobs regardless of result
+      await loadJobs(true)
+      
+      if (response.status === 'no_action') {
+        console.log('Stop job result:', response.message)
+      }
     } catch (error) {
       console.error('Failed to stop job:', error)
       alert('Failed to stop job. Please try again.')
@@ -312,7 +323,7 @@ export default function JobMonitor() {
                   <div>
                     <span className="text-gray-600">Duration:</span>
                     <div className="font-medium">
-                      {formatDuration(job.started_at, job.completed_at)}
+                      {formatDuration(job.started_at, job.completed_at || undefined)}
                     </div>
                   </div>
                   <div>

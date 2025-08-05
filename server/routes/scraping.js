@@ -2,12 +2,12 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const { spawn } = require('child_process');
-const { createScrapingJob, updateScrapingJob, getJobStatus, getAllJobs } = require('../database/jobs');
+const { createScrapingJob, createScrapingJobRunning, updateScrapingJob, getJobStatus, getAllJobs } = require('../database/jobs');
 const { getCountyByCode } = require('../database/counties');
+const QueueManager = require('../queue-manager');
 
-// Global variables for process management
-let currentScrapingProcess = null;
-let currentScrapingJob = null;
+// Initialize queue manager
+const queueManager = new QueueManager();
 
 // Start scraping for a specific county
 router.post('/counties/:countyCode/scrape', async (req, res) => {
@@ -24,64 +24,17 @@ router.post('/counties/:countyCode/scrape', async (req, res) => {
             return res.status(400).json({ error: 'County is disabled' });
         }
         
-        // Check if a scraping job is already running for any county
-        if (currentScrapingProcess && currentScrapingProcess.exitCode === null) {
-            return res.status(400).json({ 
-                error: 'A scraping job is already running. Please wait for it to complete before starting another job.'
-            });
-        }
-        
-        // Create new job and start scraping
+        // Create new job with pending status (queue will process it)
         const jobId = await createScrapingJob(countyCode);
         
-        // Start scraping process with updated path
-        currentScrapingJob = jobId;
-        currentScrapingProcess = spawn('python3', [path.join(__dirname, '..', '..', 'scraping', 'dgs_scraper.py'), countyCode, `--job-id=${jobId}`], {
-            cwd: path.join(__dirname, '..', '..'),
-            stdio: 'pipe'
-        });
-
-        // Handle process completion
-        currentScrapingProcess.on('exit', (code) => {
-            console.log(`Scraping process exited with code ${code}`);
-            
-            // Update job status based on exit code
-            const status = code === 0 ? 'completed' : 'failed';
-            const errorMessage = code !== 0 ? `Process exited with code ${code}` : null;
-            
-            updateScrapingJob(jobId, {
-                status: status,
-                completed_at: new Date().toISOString(),
-                error_message: errorMessage
-            }).catch(console.error);
-            
-            currentScrapingProcess = null;
-            currentScrapingJob = null;
-        });
-
-        // Handle process errors
-        currentScrapingProcess.on('error', (error) => {
-            console.error('Scraping process error:', error);
-            
-            updateScrapingJob(jobId, {
-                status: 'failed',
-                completed_at: new Date().toISOString(),
-                error_message: error.message
-            }).catch(console.error);
-            
-            currentScrapingProcess = null;
-            currentScrapingJob = null;
-        });
-        
-        res.json({
-            success: true,
-            message: `Started scraping ${county.name} County`,
-            job_id: jobId,
-            county: county
+        res.json({ 
+            job_id: jobId, 
+            status: 'pending',
+            message: 'Job added to queue'
         });
         
     } catch (error) {
-        console.error('Error starting county scrape:', error);
+        console.error('Error creating scraping job:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -91,27 +44,14 @@ router.post('/start-scraping', async (req, res) => {
     try {
         const { county_id = '34' } = req.body;
         
-        // Check if already running
-        if (currentScrapingJob !== null) {
-            return res.status(400).json({ error: 'Scraping job already running' });
-        }
-        
-        // Create job in database
+        // Create job in database with pending status
         const jobId = await createScrapingJob(county_id);
-        currentScrapingJob = jobId;
         
-        // Start Python scraper in background - updated path
-        currentScrapingProcess = spawn('python', [path.join(__dirname, '..', '..', 'scraping', 'dgs_scraper.py')], {
-            env: { ...process.env, COUNTY_ID: county_id, JOB_ID: jobId.toString() }
+        res.json({ 
+            job_id: jobId, 
+            status: 'pending',
+            message: 'Job added to queue'
         });
-        
-        currentScrapingProcess.on('exit', (code) => {
-            console.log(`Scraping process exited with code ${code}`);
-            currentScrapingProcess = null;
-            currentScrapingJob = null;
-        });
-        
-        res.json({ job_id: jobId, status: 'started' });
     } catch (error) {
         console.error('Error starting scraping:', error);
         res.status(500).json({ error: 'Failed to start scraping' });
@@ -121,30 +61,16 @@ router.post('/start-scraping', async (req, res) => {
 // Stop scraping
 router.post('/stop-scraping', async (req, res) => {
     try {
-        if (currentScrapingJob === null) {
-            return res.status(400).json({ error: 'No scraping job running' });
+        const stopped = queueManager.stopCurrentJob();
+        
+        if (stopped) {
+            res.json({ status: 'stopped', message: 'Current scraping job stopped' });
+        } else {
+            res.json({ status: 'no_job', message: 'No active scraping job to stop' });
         }
-        
-        const jobId = currentScrapingJob;
-        
-        // Update job status
-        await updateScrapingJob(jobId, {
-            status: 'stopped',
-            completed_at: new Date().toISOString()
-        });
-        
-        // Kill the process
-        if (currentScrapingProcess && !currentScrapingProcess.killed) {
-            currentScrapingProcess.kill('SIGTERM');
-        }
-        
-        currentScrapingProcess = null;
-        currentScrapingJob = null;
-        
-        res.json({ status: 'stopped' });
     } catch (error) {
         console.error('Error stopping scraping:', error);
-        res.status(500).json({ error: 'Failed to stop scraping' });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -152,13 +78,13 @@ router.post('/stop-scraping', async (req, res) => {
 router.get('/status/:jobId', async (req, res) => {
     try {
         const jobId = parseInt(req.params.jobId);
-        const status = await getJobStatus(jobId);
+        const job = await getJobStatus(jobId);
         
-        if (!status) {
+        if (!job) {
             return res.status(404).json({ error: 'Job not found' });
         }
         
-        res.json(status);
+        res.json(job);
     } catch (error) {
         console.error('Error getting job status:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -181,84 +107,72 @@ router.get('/jobs', async (req, res) => {
 router.post('/jobs/:jobId/stop', async (req, res) => {
     try {
         const jobId = parseInt(req.params.jobId);
+        const job = await getJobStatus(jobId);
         
-        // Update job status to stopped
-        await updateScrapingJob(jobId, {
-            status: 'stopped',
-            completed_at: new Date().toISOString()
-        });
-        
-        // If this is the currently running job, kill the process
-        if (currentScrapingJob === jobId) {
-            if (currentScrapingProcess && !currentScrapingProcess.killed) {
-                currentScrapingProcess.kill('SIGTERM');
-            }
-            currentScrapingProcess = null;
-            currentScrapingJob = null;
-        }
-        
-        res.json({ 
-            success: true, 
-            message: 'Job stopped successfully' 
-        });
-    } catch (error) {
-        console.error('Error stopping job:', error);
-        res.status(500).json({ error: 'Failed to stop job' });
-    }
-});
-
-// Retry job
-router.post('/jobs/:jobId/retry', async (req, res) => {
-    try {
-        const jobId = parseInt(req.params.jobId);
-        
-        // Get the original job details
-        const originalJob = await getJobStatus(jobId);
-        if (!originalJob) {
+        if (!job) {
             return res.status(404).json({ error: 'Job not found' });
         }
 
-        // Check if county exists and is enabled
-        const county = await getCountyByCode(originalJob.county_id);
-        if (!county) {
-            return res.status(400).json({ error: 'County not found' });
+        // If job is running or pending, stop it
+        if (job.status === 'running' || job.status === 'pending') {
+            // Kill current process if this is the current job
+            const currentJobId = queueManager.getCurrentJobId();
+            if (currentJobId === jobId) {
+                queueManager.stopCurrentJob();
+            }
+            
+            // Update job status to stopped
+            await updateScrapingJob(jobId, { 
+                status: 'stopped',
+                completed_at: new Date().toISOString(),
+                error_message: 'Job stopped by user'
+            });
+            
+            res.json({ status: 'stopped', message: 'Job stopped' });
+        } else {
+            // Job is already completed, failed, etc.
+            res.json({ status: 'no_action', message: `Job already ${job.status}` });
         }
-        
-        if (!county.enabled) {
-            return res.status(400).json({ error: 'County is disabled' });
-        }
-        
-        // Check if a scraping job is already running
-        if (currentScrapingProcess && currentScrapingProcess.exitCode === null) {
-            return res.status(400).json({ error: 'A scraping job is already running' });
-        }
-        
-        // Create new job and start scraping
-        const newJobId = await createScrapingJob(originalJob.county_id);
-        
-        // Start scraping process
-        currentScrapingJob = newJobId;
-        currentScrapingProcess = spawn('python3', [path.join(__dirname, '..', '..', 'scraping', 'dgs_scraper.py'), originalJob.county_id, `--job-id=${newJobId}`], {
-            cwd: path.join(__dirname, '..', '..'),
-            stdio: 'pipe'
-        });
-        
-        res.json({ 
-            success: true, 
-            message: 'Job retried successfully',
-            new_job_id: newJobId
-        });
     } catch (error) {
-        console.error('Error retrying job:', error);
-        res.status(500).json({ error: error.message || 'Failed to retry job' });
+        console.error('Error stopping job:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// Export the cleanup function for the main server
-function cleanup() {
-    if (currentScrapingProcess && !currentScrapingProcess.killed) {
-        currentScrapingProcess.kill('SIGTERM');
+// Retry failed job
+router.post('/jobs/:jobId/retry', async (req, res) => {
+    try {
+        const jobId = parseInt(req.params.jobId);
+        const job = await getJobStatus(jobId);
+        
+        if (!job) {
+            return res.status(404).json({ error: 'Job not found' });
+        }
+        
+        if (job.status !== 'failed') {
+            return res.status(400).json({ error: 'Only failed jobs can be retried' });
+        }
+        
+        // Create new job for retry
+        const newJobId = await createScrapingJob(job.county_id);
+        
+        res.json({ 
+            job_id: newJobId, 
+            status: 'pending',
+            message: 'Retry job added to queue'
+        });
+    } catch (error) {
+        console.error('Error retrying job:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
-}
+});
 
-module.exports = { router, cleanup }; 
+// Get queue status
+router.get('/queue/status', (req, res) => {
+    res.json({
+        isProcessing: queueManager.isCurrentlyProcessing(),
+        currentJobId: queueManager.getCurrentJobId()
+    });
+});
+
+module.exports = router; 

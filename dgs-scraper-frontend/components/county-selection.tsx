@@ -113,8 +113,6 @@ export default function CountySelection({ onSettingsChange }: CountySelectionPro
       
       // Immediately add to running jobs
       setRunningJobs(prev => new Set(prev).add(county.code))
-      
-      alert(`Started scraping ${county.name} County. Check the Job Monitor tab for progress.`)
     } catch (error) {
       console.error('Failed to start scraping:', error)
       
