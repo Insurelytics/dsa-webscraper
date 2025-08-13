@@ -49,8 +49,9 @@ class QueueManager {
                 started_at: new Date().toISOString()
             });
 
-            // Start the scraping process
-            this.currentProcess = spawn('python3', [
+            // Start the scraping process using the virtual environment
+            const pythonPath = path.join(__dirname, '..', 'scraping', '.venv', 'bin', 'python');
+            this.currentProcess = spawn(pythonPath, [
                 path.join(__dirname, '..', 'scraping', 'dgs_scraper.py'), 
                 job.county_id, 
                 `--job-id=${job.id}`
