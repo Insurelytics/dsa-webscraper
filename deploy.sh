@@ -36,10 +36,12 @@ echo "🔨 Building frontend..."
 npm run build || handle_error "Failed to build frontend"
 cd ..
 
-# Install Python dependencies
+# Install Python dependencies (use virtual environment to avoid system-managed errors)
 echo "🐍 Installing Python dependencies..."
 cd scraping || handle_error "Scraping directory not found"
-pip3 install -r requirements.txt || handle_error "Failed to install Python dependencies"
+[ -d ".venv" ] || python3 -m venv .venv || handle_error "Failed to create virtual environment. Install python3-venv."
+./.venv/bin/pip install --upgrade pip || handle_error "Failed to upgrade pip in virtual environment"
+./.venv/bin/pip install -r requirements.txt || handle_error "Failed to install Python dependencies"
 cd ..
 
 # Stop existing PM2 processes if they exist
