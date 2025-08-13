@@ -135,7 +135,9 @@ dmypy.json
 
 # Data files (scraped content)
 *.csv
-*.json
+/scraping/*.json
+/data/*.json
+scraped_*.json
 *.xlsx
 *.xls
 
