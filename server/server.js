@@ -25,9 +25,10 @@ app.get('/', (req, res) => {
             categories: '/api/categories',
             counties: '/api/counties',
             scraping: {
-                start: 'POST /start-scraping',
-                stop: 'POST /stop-scraping',
-                status: 'GET /status/:jobId'
+                start: 'POST /api/start-scraping',
+                stop: 'POST /api/stop-scraping',
+                status: 'GET /api/status/:jobId',
+                jobs: 'GET /api/jobs'
             }
         }
     });
@@ -37,7 +38,7 @@ app.get('/', (req, res) => {
 app.use('/api', statsRoutes);
 app.use('/api', criteriaRoutes);
 app.use('/api', countiesRoutes);
-app.use('/', scrapingRoutes);
+app.use('/api', scrapingRoutes);
 
 // Error handling
 process.on('SIGINT', () => {

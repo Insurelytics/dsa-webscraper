@@ -63,41 +63,41 @@ class ApiClient {
   }
 
   async scrapeCounty(countyCode: string) {
-    return this.request(`/counties/${countyCode}/scrape`, {
+    return this.request(`/api/counties/${countyCode}/scrape`, {
       method: 'POST',
     });
   }
 
   // Scraping jobs
   async startScraping(countyId: string) {
-    return this.request('/start-scraping', {
+    return this.request('/api/start-scraping', {
       method: 'POST',
       body: JSON.stringify({ county_id: countyId }),
     });
   }
 
   async stopScraping() {
-    return this.request('/stop-scraping', {
+    return this.request('/api/stop-scraping', {
       method: 'POST',
     });
   }
 
   async getJobStatus(jobId: number) {
-    return this.request(`/status/${jobId}`);
+    return this.request(`/api/status/${jobId}`);
   }
 
   async getAllJobs(limit: number = 50) {
-    return this.request(`/jobs?limit=${limit}`);
+    return this.request(`/api/jobs?limit=${limit}`);
   }
 
   async stopJob(jobId: number) {
-    return this.request(`/jobs/${jobId}/stop`, {
+    return this.request(`/api/jobs/${jobId}/stop`, {
       method: 'POST',
     });
   }
 
   async retryJob(jobId: number) {
-    return this.request(`/jobs/${jobId}/retry`, {
+    return this.request(`/api/jobs/${jobId}/retry`, {
       method: 'POST',
     });
   }
