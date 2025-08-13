@@ -29,7 +29,7 @@ cd ..
 # Install frontend dependencies
 echo "🎨 Installing frontend dependencies..."
 cd dgs-scraper-frontend || handle_error "Frontend directory not found"
-npm install || handle_error "Failed to install frontend dependencies"
+npm install --legacy-peer-deps || handle_error "Failed to install frontend dependencies"
 
 # Build frontend
 echo "🔨 Building frontend..."
