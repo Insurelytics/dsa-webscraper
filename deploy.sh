@@ -52,7 +52,7 @@ pm2 delete dgs-scraper-frontend 2>/dev/null || true
 # Start backend with PM2
 echo "🔧 Starting backend server with PM2..."
 cd server
-pm2 start server.js --name "dgs-scraper-backend" --watch || handle_error "Failed to start backend with PM2"
+pm2 start server.js --name "dgs-scraper-backend" --watch --ignore-watch="temp node_modules logs *.log" || handle_error "Failed to start backend with PM2"
 cd ..
 
 # Start frontend with PM2 on port 3001
