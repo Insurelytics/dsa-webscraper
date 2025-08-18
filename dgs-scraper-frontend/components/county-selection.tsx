@@ -53,7 +53,7 @@ export default function CountySelection({ onSettingsChange }: CountySelectionPro
       setLoading(true)
       setError(null)
       const countiesData = await apiClient.getCounties()
-      setCounties(countiesData)
+      setCounties(countiesData as County[])
     } catch (err) {
       console.error('Failed to load counties:', err)
       setError('Failed to load counties. Please check if the backend server is running.')
@@ -64,9 +64,9 @@ export default function CountySelection({ onSettingsChange }: CountySelectionPro
 
   const loadRunningJobs = async () => {
     try {
-      const jobs = await apiClient.getAllJobs(50)
+      const jobs = await apiClient.getAllJobs(50) as any[]
       const running = new Set<string>()
-      jobs.forEach((job: any) => {
+      jobs.forEach((job) => {
         if (job.status === 'running' || job.status === 'pending') {
           running.add(job.county_id)
         }
@@ -236,12 +236,13 @@ export default function CountySelection({ onSettingsChange }: CountySelectionPro
         {filteredCounties.map((county) => (
           <Card
             key={county.id}
-            className={`cursor-pointer transition-all ${county.enabled ? "ring-2 ring-blue-500 bg-blue-50" : "hover:shadow-md"}`}
+            className={`transition-all ${county.enabled ? "ring-2 ring-blue-500 bg-blue-50" : "hover:shadow-md"}`}
           >
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex items-center space-x-3">
                   <Checkbox 
+                    className="cursor-pointer"
                     checked={county.enabled} 
                     onCheckedChange={() => handleCountyToggle(county)} 
                   />
@@ -265,12 +266,13 @@ export default function CountySelection({ onSettingsChange }: CountySelectionPro
                   {getStatusBadge(county)}
                   {county.enabled && !runningJobs.has(county.code) && !scrapingCounties.has(county.code) && (
                     <Button 
-                      size="sm" 
+                      size="sm"
                       variant="outline"
                       onClick={() => handleScrapeNow(county)}
                       disabled={scrapingCounties.has(county.code)}
+                      className="cursor-pointer"
                     >
-                      {scrapingCounties.has(county.code) ? 'Scraping...' : 'Scrape Now'}
+                      Scrape Now
                     </Button>
                   )}
                 </div>

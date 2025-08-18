@@ -14,6 +14,7 @@ const statsRoutes = require('./routes/stats');
 const criteriaRoutes = require('./routes/criteria');
 const countiesRoutes = require('./routes/counties');
 const scrapingRoutes = require('./routes/scraping');
+const emailSettingsRoutes = require('./routes/email-settings');
 
 // Home page
 app.get('/', (req, res) => {
@@ -39,6 +40,7 @@ app.use('/api', statsRoutes);
 app.use('/api', criteriaRoutes);
 app.use('/api', countiesRoutes);
 app.use('/api', scrapingRoutes);
+app.use('/api', emailSettingsRoutes);
 
 // Error handling
 process.on('SIGINT', () => {

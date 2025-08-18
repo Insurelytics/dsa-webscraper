@@ -101,6 +101,8 @@ export default function DGSScraperDashboard() {
         await (window as any).resultsAndFiltersSave();
       } else if (activeTab === "criteria" && (window as any).scoringCriteriaSave) {
         await (window as any).scoringCriteriaSave();
+      } else if (activeTab === "schedule" && (window as any).emailScheduleSave) {
+        await (window as any).emailScheduleSave();
       }
       // Add other tab save functions here as needed
       
@@ -187,7 +189,7 @@ export default function DGSScraperDashboard() {
             <TabsTrigger value="criteria">Scoring Criteria</TabsTrigger>
             <TabsTrigger value="counties">Counties</TabsTrigger>
             <TabsTrigger value="jobs">Job Monitor</TabsTrigger>
-            <TabsTrigger value="schedule">Schedule</TabsTrigger>
+            <TabsTrigger value="schedule">Email Schedule</TabsTrigger>
           </TabsList>
 
           {/* Results & Filters Tab */}

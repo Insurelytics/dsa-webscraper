@@ -69,6 +69,19 @@ function initDatabase() {
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(category)
                 )
+            `);
+            
+            db.run(`
+                CREATE TABLE IF NOT EXISTS email_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    emails TEXT NOT NULL,
+                    frequency TEXT NOT NULL DEFAULT 'weekly',
+                    lead_type TEXT NOT NULL DEFAULT 'strong',
+                    weekly_day TEXT DEFAULT 'monday',
+                    monthly_day INTEGER DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
             `, (err) => {
                 if (err) {
                     reject(err);

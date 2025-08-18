@@ -127,6 +127,18 @@ class ApiClient {
       body: JSON.stringify({ criteria }),
     });
   }
+
+  // Email settings management
+  async getEmailSettings() {
+    return this.request('/api/email-settings');
+  }
+
+  async updateEmailSettings(settings: any) {
+    return this.request('/api/email-settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  }
 }
 
 export const apiClient = new ApiClient();
