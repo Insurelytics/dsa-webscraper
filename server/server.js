@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { initDatabase, db } = require('./database/init');
+const autoScheduler = require('./services/auto-scheduler');
 
 const app = express();
 const PORT = 8000;
@@ -45,21 +46,26 @@ app.use('/api', emailSettingsRoutes);
 // Error handling
 process.on('SIGINT', () => {
     console.log('Received SIGINT, shutting down gracefully...');
+    autoScheduler.stop();
     db.close();
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
     console.log('Received SIGTERM, shutting down gracefully...');
+    autoScheduler.stop();
     db.close();
     process.exit(0);
 });
 
 // Start server
-initDatabase().then(() => {
+initDatabase().then(async () => {
     app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`);
     });
+    
+    // Start the auto-scheduler
+    await autoScheduler.start();
 }).catch(err => {
     console.error('Failed to initialize database:', err);
     process.exit(1);
