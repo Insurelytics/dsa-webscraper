@@ -14,7 +14,7 @@ async function sendEmail(to, subject, text, html = null, attachments = []) {
   });
   try {
     const messageData = {
-      from: "DGS Scraper <postmaster@mail-testing.bschoolland.com>",
+      from: "Jacob AI <jacob@mail-testing.bschoolland.com>",
       to: [to],
       subject: subject,
       text: text,
