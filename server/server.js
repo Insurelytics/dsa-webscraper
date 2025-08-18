@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { initDatabase, db } = require('./database/init');
+const { initScheduler } = require('./services/schedule');
 
 
 const app = express();
@@ -60,6 +61,9 @@ process.on('SIGTERM', () => {
 initDatabase().then(() => {
     app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`);
+        
+        // Initialize the job scheduler after server starts
+        initScheduler();
     });
 }).catch(err => {
     console.error('Failed to initialize database:', err);

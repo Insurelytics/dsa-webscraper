@@ -291,6 +291,41 @@ async function recategorizeAllProjects() {
     });
 }
 
+function getProjectScrapedAfter(afterDate) {
+    return new Promise((resolve, reject) => {
+        db.all('SELECT * FROM projects WHERE scraped_at > ?', [afterDate], (err, rows) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            
+            const projects = rows.map(row => {
+                try {
+                    const projectData = JSON.parse(row.project_data);
+                    return {
+                        id: row.id,
+                        origin_id: row.origin_id,
+                        app_id: row.app_id,
+                        county_id: row.county_id,
+                        client_id: row.client_id,
+                        district_code: row.district_code,
+                        district_name: row.district_name,
+                        dsa_app_id: row.dsa_app_id,
+                        ptn: row.ptn,
+                        project_name: row.project_name,
+                        scraped_at: row.scraped_at,
+                        ...projectData
+                    };
+                } catch (e) {
+                    return null;
+                }
+            }).filter(p => p !== null);
+
+            resolve(projects);
+        });
+    });
+}
+
 module.exports = {
     getProjectCount,
     getProjectsByCategory,
@@ -298,5 +333,6 @@ module.exports = {
     getAllScoringCriteria,
     updateScoringCriteria,
     categorizeProject,
-    recategorizeAllProjects
+    recategorizeAllProjects,
+    getProjectScrapedAfter
 }; 

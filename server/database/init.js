@@ -80,7 +80,8 @@ function initDatabase() {
                     weekly_day TEXT DEFAULT 'monday',
                     monthly_day INTEGER DEFAULT 1,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    last_job_run DATETIME DEFAULT NULL
                 )
             `, (err) => {
                 if (err) {
