@@ -6,276 +6,79 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Clock, Play } from "lucide-react"
 
-// Placeholder data for current schedules
-const defaultSchedules = {
-  watchlistRescrape: {
-    enabled: true,
-    frequency: "daily",
-    time: "02:00",
-    lastRun: "2024-01-15 02:00:00",
-    nextRun: "2024-01-16 02:00:00",
-  },
-  fullRescrape: {
-    enabled: true,
-    frequency: "weekly",
-    time: "01:00",
-    day: "sunday",
-    lastRun: "2024-01-14 01:00:00",
-    nextRun: "2024-01-21 01:00:00",
-  },
-  leadsRescrape: {
-    enabled: true,
-    frequency: "daily",
-    time: "06:00",
-    lastRun: "2024-01-15 06:00:00",
-    nextRun: "2024-01-16 06:00:00",
-  },
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Mail, RefreshCw } from "lucide-react"
+
+// Email notification settings
+const defaultEmailSettings = {
+  emails: "",
+  frequency: "weekly",
+  leadType: "strong", // "strong" or "both"
 }
 
-interface ScheduleSettingsProps {
+interface EmailScheduleProps {
   onSettingsChange: (hasChanges: boolean) => void
 }
 
-export default function ScheduleSettings({ onSettingsChange }: ScheduleSettingsProps) {
-  const [schedules, setSchedules] = useState(defaultSchedules)
+export default function EmailSchedule({ onSettingsChange }: EmailScheduleProps) {
+  const [emailSettings, setEmailSettings] = useState(defaultEmailSettings)
 
-  const updateSchedule = (scheduleType: string, field: string, value: any) => {
-    setSchedules((prev) => ({
+  const updateEmailSetting = (field: string, value: any) => {
+    setEmailSettings((prev) => ({
       ...prev,
-      [scheduleType]: {
-        ...prev[scheduleType as keyof typeof prev],
-        [field]: value,
-      },
+      [field]: value,
     }))
     onSettingsChange(true)
   }
 
-  const getStatusBadge = (enabled: boolean, nextRun: string) => {
-    if (!enabled) {
-      return <Badge variant="secondary">Disabled</Badge>
-    }
+  const isEnabled = emailSettings.emails.trim().length > 0
 
-    const nextRunDate = new Date(nextRun)
-    const now = new Date()
 
-    if (nextRunDate > now) {
-      return (
-        <Badge variant="default" className="bg-green-500">
-          Scheduled
-        </Badge>
-      )
-    } else {
-      return (
-        <Badge variant="default" className="bg-blue-500">
-          Running
-        </Badge>
-      )
-    }
-  }
-
-  const formatNextRun = (nextRun: string) => {
-    const date = new Date(nextRun)
-    const now = new Date()
-    const diffMs = date.getTime() - now.getTime()
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
-
-    if (diffHours > 0) {
-      return `in ${diffHours}h ${diffMinutes}m`
-    } else if (diffMinutes > 0) {
-      return `in ${diffMinutes}m`
-    } else {
-      return "now"
-    }
-  }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center space-x-2">
-                  <Clock className="h-5 w-5" />
-                  <span>Watchlist Rescrape</span>
-                </CardTitle>
-                <CardDescription>Regular updates for watchlist projects to track status changes</CardDescription>
-              </div>
-              {getStatusBadge(schedules.watchlistRescrape.enabled, schedules.watchlistRescrape.nextRun)}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="watchlist-enabled">Enable Schedule</Label>
-              <Switch
-                id="watchlist-enabled"
-                checked={schedules.watchlistRescrape.enabled}
-                onCheckedChange={(checked) => updateSchedule("watchlistRescrape", "enabled", checked)}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="watchlist-frequency">Frequency</Label>
-                <Select
-                  value={schedules.watchlistRescrape.frequency}
-                  onValueChange={(value) => updateSchedule("watchlistRescrape", "frequency", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="hourly">Hourly</SelectItem>
-                    <SelectItem value="daily">Daily</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="watchlist-time">Time</Label>
-                <Input
-                  id="watchlist-time"
-                  type="time"
-                  value={schedules.watchlistRescrape.time}
-                  onChange={(e) => updateSchedule("watchlistRescrape", "time", e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="p-3 bg-gray-50 rounded-lg text-sm">
-              <div className="flex justify-between mb-1">
-                <span className="text-gray-600">Last Run:</span>
-                <span>{schedules.watchlistRescrape.lastRun}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Next Run:</span>
-                <span>
-                  {schedules.watchlistRescrape.nextRun} ({formatNextRun(schedules.watchlistRescrape.nextRun)})
-                </span>
-              </div>
-            </div>
-
-            <Button variant="outline" className="w-full bg-transparent">
-              <Play className="h-4 w-4 mr-2" />
-              Run Now
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center space-x-2">
-                  <Clock className="h-5 w-5" />
-                  <span>Leads Rescrape</span>
-                </CardTitle>
-                <CardDescription>
-                  Regular updates for strong and weak lead projects to track status changes
-                </CardDescription>
-              </div>
-              {getStatusBadge(schedules.leadsRescrape.enabled, schedules.leadsRescrape.nextRun)}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="strongleads-enabled">Enable Schedule</Label>
-              <Switch
-                id="strongleads-enabled"
-                checked={schedules.leadsRescrape.enabled}
-                onCheckedChange={(checked) => updateSchedule("leadsRescrape", "enabled", checked)}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="strongleads-frequency">Frequency</Label>
-                <Select
-                  value={schedules.leadsRescrape.frequency}
-                  onValueChange={(value) => updateSchedule("leadsRescrape", "frequency", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="hourly">Hourly</SelectItem>
-                    <SelectItem value="daily">Daily</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="strongleads-time">Time</Label>
-                <Input
-                  id="strongleads-time"
-                  type="time"
-                  value={schedules.leadsRescrape.time}
-                  onChange={(e) => updateSchedule("leadsRescrape", "time", e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="p-3 bg-gray-50 rounded-lg text-sm">
-              <div className="flex justify-between mb-1">
-                <span className="text-gray-600">Last Run:</span>
-                <span>{schedules.leadsRescrape.lastRun}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Next Run:</span>
-                <span>
-                  {schedules.leadsRescrape.nextRun} ({formatNextRun(schedules.leadsRescrape.nextRun)})
-                </span>
-              </div>
-            </div>
-
-            <Button variant="outline" className="w-full bg-transparent">
-              <Play className="h-4 w-4 mr-2" />
-              Run Now
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
+    <div className="max-w-2xl mx-auto">
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center space-x-2">
-                <Clock className="h-5 w-5" />
-                <span>Full Database Rescrape</span>
+                <Mail className="h-5 w-5" />
+                <span>Email Lead Notifications</span>
               </CardTitle>
               <CardDescription>
-                Complete rescrape of all selected counties (less frequent, comprehensive update)
+                Receive automated email updates with new project leads from your selected counties
               </CardDescription>
             </div>
-            {getStatusBadge(schedules.fullRescrape.enabled, schedules.fullRescrape.nextRun)}
+            <Badge variant={isEnabled ? "default" : "secondary"}>
+              {isEnabled ? "Enabled" : "Disabled"}
+            </Badge>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="full-enabled">Enable Schedule</Label>
-            <Switch
-              id="full-enabled"
-              checked={schedules.fullRescrape.enabled}
-              onCheckedChange={(checked) => updateSchedule("fullRescrape", "enabled", checked)}
+        <CardContent className="space-y-6">
+
+
+          <div className="space-y-2">
+            <Label htmlFor="email-addresses">Email Addresses</Label>
+            <Input
+              id="email-addresses"
+              type="text"
+              placeholder="email1@example.com, email2@example.com"
+              value={emailSettings.emails}
+              onChange={(e) => updateEmailSetting("emails", e.target.value)}
             />
+            <p className="text-xs text-gray-500">
+              Enter multiple email addresses separated by commas
+            </p>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="full-frequency">Frequency</Label>
+              <Label htmlFor="email-frequency">Frequency</Label>
               <Select
-                value={schedules.fullRescrape.frequency}
-                onValueChange={(value) => updateSchedule("fullRescrape", "frequency", value)}
+                value={emailSettings.frequency}
+                onValueChange={(value) => updateEmailSetting("frequency", value)}
+                disabled={!isEnabled}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -288,65 +91,55 @@ export default function ScheduleSettings({ onSettingsChange }: ScheduleSettingsP
               </Select>
             </div>
 
-            {schedules.fullRescrape.frequency === "monthly" && (
-              <div className="col-span-3 p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
-                Monthly schedules will run on the 1st day of each month at the specified time.
-              </div>
-            )}
-
-            {schedules.fullRescrape.frequency === "weekly" && (
-              <div className="space-y-2">
-                <Label htmlFor="full-day">Day of Week</Label>
-                <Select
-                  value={schedules.fullRescrape.day}
-                  onValueChange={(value) => updateSchedule("fullRescrape", "day", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sunday">Sunday</SelectItem>
-                    <SelectItem value="monday">Monday</SelectItem>
-                    <SelectItem value="tuesday">Tuesday</SelectItem>
-                    <SelectItem value="wednesday">Wednesday</SelectItem>
-                    <SelectItem value="thursday">Thursday</SelectItem>
-                    <SelectItem value="friday">Friday</SelectItem>
-                    <SelectItem value="saturday">Saturday</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
             <div className="space-y-2">
-              <Label htmlFor="full-time">Time</Label>
-              <Input
-                id="full-time"
-                type="time"
-                value={schedules.fullRescrape.time}
-                onChange={(e) => updateSchedule("fullRescrape", "time", e.target.value)}
-              />
+              <Label htmlFor="email-leadtype">Lead Type</Label>
+              <Select
+                value={emailSettings.leadType}
+                onValueChange={(value) => updateEmailSetting("leadType", value)}
+                disabled={!isEnabled}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="strong">Strong Leads Only</SelectItem>
+                  <SelectItem value="both">Strong and Weak Leads</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
-          <div className="p-3 bg-gray-50 rounded-lg text-sm">
-            <div className="flex justify-between mb-1">
-              <span className="text-gray-600">Last Run:</span>
-              <span>{schedules.fullRescrape.lastRun}</span>
+          <div className="p-4 bg-blue-50 rounded-lg text-sm text-blue-700">
+            <div className="flex items-start space-x-2 mb-2">
+              <RefreshCw className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-medium mb-1">Automatic Data Refresh</p>
+                <p>
+                  The system will automatically re-scrape project data before sending each email to ensure 
+                  you receive the most up-to-date information available.
+                </p>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Next Run:</span>
-              <span>
-                {schedules.fullRescrape.nextRun} ({formatNextRun(schedules.fullRescrape.nextRun)})
+          </div>
+
+          <div className="p-4 bg-green-50 rounded-lg text-sm text-green-700">
+            <p className="font-medium mb-1">Email Schedule Summary:</p>
+            <p>
+              This will send the specified email addresses any new{" "}
+              <span className="font-medium">
+                {emailSettings.leadType === "strong" ? "strong leads" : "strong and weak leads"}
+              </span>{" "}
+              every{" "}
+              <span className="font-medium">
+                {emailSettings.frequency === "daily" ? "day" : 
+                 emailSettings.frequency === "weekly" ? "week" : "month"}
               </span>
-            </div>
+              .
+            </p>
           </div>
-
-          <Button variant="outline" className="w-full bg-transparent">
-            <Play className="h-4 w-4 mr-2" />
-            Run Now
-          </Button>
         </CardContent>
       </Card>
     </div>
   )
 }
+

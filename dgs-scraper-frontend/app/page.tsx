@@ -182,12 +182,12 @@ export default function DGSScraperDashboard() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4"> {/* 4 tabs: Results, Criteria, Counties, Jobs */}
+          <TabsList className="grid w-full grid-cols-5"> {/* 4 tabs: Results, Criteria, Counties, Jobs */}
             <TabsTrigger value="results">Results & Filters</TabsTrigger>
             <TabsTrigger value="criteria">Scoring Criteria</TabsTrigger>
             <TabsTrigger value="counties">Counties</TabsTrigger>
             <TabsTrigger value="jobs">Job Monitor</TabsTrigger>
-            {/* <TabsTrigger value="schedule">Schedule</TabsTrigger> */}
+            <TabsTrigger value="schedule">Schedule</TabsTrigger>
           </TabsList>
 
           {/* Results & Filters Tab */}
