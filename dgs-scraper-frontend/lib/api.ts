@@ -140,9 +140,9 @@ class ApiClient {
     });
   }
 
-  // CSV generation method
-  async generateCustomCSV(projects: any[], filename: string): Promise<Blob> {
-    const url = `${this.baseURL}/api/generate-csv`;
+  // Excel generation method
+  async generateCustomExcel(projects: any[], filename: string): Promise<Blob> {
+    const url = `${this.baseURL}/api/generate-excel`;
     const response = await fetch(url, {
       method: 'POST',
       headers: {

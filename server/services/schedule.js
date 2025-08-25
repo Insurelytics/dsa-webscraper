@@ -21,7 +21,7 @@ async function getCurrentDate() {
 async function filterProjectsByLeadType(projects, leadType) {
     // Filter projects based on the configured lead type preference
     const { categorizeProject } = require('../database/projects');
-    const validLeadTypes = ['strongLeads', 'weakLeads', 'watchlist'];
+    const validLeadTypes = ['strongLeads', 'weakLeads', 'watchlist', 'both'];
     
     if (!validLeadTypes.includes(leadType)) {
         console.log(`Invalid lead type: ${leadType}, defaulting to strongLeads`);
@@ -41,7 +41,8 @@ async function filterProjectsByLeadType(projects, leadType) {
                 const includeProject = 
                     (leadType === 'strongLeads' && category === 'strongLeads') ||
                     (leadType === 'weakLeads' && (category === 'strongLeads' || category === 'weakLeads')) ||
-                    (leadType === 'watchlist' && (category === 'strongLeads' || category === 'weakLeads' || category === 'watchlist'));
+                    (leadType === 'watchlist' && (category === 'strongLeads' || category === 'weakLeads' || category === 'watchlist')) ||
+                    (leadType === 'both' && (category === 'strongLeads' || category === 'weakLeads'));
                 
                 if (includeProject) {
                     project.category = category; // Add category to project for email display

@@ -5,7 +5,7 @@ const { spawn } = require('child_process');
 const { createScrapingJob, createScrapingJobRunning, updateScrapingJob, getJobStatus, getAllJobs } = require('../database/jobs');
 const { getCountyByCode } = require('../database/counties');
 const { getProjectsByCategory } = require('../database/projects');
-const { generateProjectsCSV } = require('../../shared/csv-utils');
+const { generateProjectsExcel } = require('../../shared/excel-utils');
 const QueueManager = require('../queue-manager');
 
 // Initialize queue manager
@@ -177,31 +177,31 @@ router.get('/queue/status', (req, res) => {
     });
 });
 
-// Generate CSV from provided project data
-router.post('/generate-csv', async (req, res) => {
+// Generate Excel from provided project data
+router.post('/generate-excel', async (req, res) => {
     try {
-        const { projects, filename = 'custom_export.csv' } = req.body;
+        const { projects, filename = 'custom_export.xlsx' } = req.body;
         
         if (!projects || !Array.isArray(projects) || projects.length === 0) {
             return res.status(400).json({ error: 'Projects array is required and must not be empty' });
         }
         
-        // Generate CSV content from provided projects
-        const csvContent = generateProjectsCSV(projects);
+        // Generate Excel buffer from provided projects
+        const excelBuffer = generateProjectsExcel(projects);
         
-        if (!csvContent) {
-            return res.status(500).json({ error: 'Failed to generate CSV content' });
+        if (!excelBuffer) {
+            return res.status(500).json({ error: 'Failed to generate Excel content' });
         }
         
         // Set headers for file download
-        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         
-        // Send CSV content
-        res.send(csvContent);
+        // Send Excel buffer
+        res.send(excelBuffer);
         
     } catch (error) {
-        console.error('Error generating custom CSV:', error);
+        console.error('Error generating custom Excel:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

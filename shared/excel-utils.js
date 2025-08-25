@@ -23,10 +23,10 @@ function generateProjectsExcel(projects) {
     // Order the headers based on the sample structure
     const orderedHeaders = [
         'Project Name', 'Address', 'City', 'Zip',
-        'url',
         'Project Scope',
         'Received Date', 'Approved Date', 'Closed Date',
-        'Estimated Amt', 'Contracted Amt', 'Construction Change Document Amt'
+        'Estimated Amt', 'Contracted Amt', 'Construction Change Document Amt',
+        'url',
     ];
     
     // Log any remaining keys that weren't in the ordered list, but only if they have data for debugging
@@ -37,13 +37,29 @@ function generateProjectsExcel(projects) {
     // Node.js environment - use xlsx library
     if (typeof require !== 'undefined') {
         try {
-            const XLSX = require('xlsx');
+            // Try to resolve xlsx from server directory first
+            let XLSX;
+            try {
+                XLSX = require('xlsx');
+            } catch (e) {
+                // Fallback to server's node_modules
+                const path = require('path');
+                const serverDir = path.resolve(__dirname, '..', 'server');
+                XLSX = require(path.join(serverDir, 'node_modules', 'xlsx'));
+            }
             
-            // Create worksheet data
+            // Create worksheet data with proper handling for URLs
             const worksheetData = [
                 headers,
                 ...projects.map(project => 
-                    headers.map(header => project[header] || '')
+                    headers.map(header => {
+                        const value = project[header] || '';
+                        // If this is the url column and it has a value, make it a clickable hyperlink
+                        if (header === 'url' && value && typeof value === 'string' && value.trim()) {
+                            return { f: `HYPERLINK("${value.trim()}", "${value.trim()}")` };
+                        }
+                        return value;
+                    })
                 )
             ];
             
@@ -67,7 +83,14 @@ function generateProjectsExcel(projects) {
     return {
         headers,
         data: projects.map(project => 
-            headers.map(header => project[header] || '')
+            headers.map(header => {
+                const value = project[header] || '';
+                // If this is the url column and it has a value, mark it for hyperlink handling
+                if (header === 'url' && value && typeof value === 'string' && value.trim()) {
+                    return { type: 'hyperlink', value: value.trim() };
+                }
+                return value;
+            })
         )
     };
 }

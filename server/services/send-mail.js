@@ -3,7 +3,7 @@ const FormData = require("form-data"); // form-data v4.0.1
 const Mailgun = require("mailgun.js"); // mailgun.js v11.1.0
 const fs = require('fs');
 const path = require('path');
-const { generateProjectsCSV } = require('../../shared/csv-utils');
+const { generateProjectsExcel } = require('../../shared/excel-utils');
 
 async function sendEmail(to, subject, text, html = null, attachments = []) {
   const mailgun = new Mailgun(FormData);
@@ -75,10 +75,10 @@ New projects that meet your criteria: ${qualifiedProjects.length}
 ${qualifiedProjects.length > 0 ? `Project Details:
 ${qualifiedProjects.map(formatProjectSummary).join('\n\n')}` : 'No projects matched your criteria this time.'}
 
-${qualifiedProjects.length > 0 ? 'A detailed CSV file with all qualifying projects is attached.' : ''}
+${qualifiedProjects.length > 0 ? 'A detailed Excel file with all qualifying projects is attached.' : ''}
 
 ---
-This email was sent automatically by your DGS Scraper system.`;
+This email was sent automatically by the DSA Scraper system.`;
 
     const htmlContent = `
 <!DOCTYPE html>
@@ -86,53 +86,25 @@ This email was sent automatically by your DGS Scraper system.`;
 <head>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
-        .header { background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin-bottom: 20px; }
-        .stats { background-color: #e3f2fd; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-        .project { background-color: #f5f5f5; padding: 15px; margin: 10px 0; border-radius: 5px; }
-        .footer { margin-top: 30px; font-size: 12px; color: #666; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h2>DGS Scraper Results</h2>
-    </div>
+    <h2>DSA Scraper Results</h2>
     
-    <div class="stats">
-        <h3>Summary</h3>
-        <p><strong>Total new projects found:</strong> ${totalNewProjects}</p>
-        <p><strong>New ${leadTypeName} that meet your criteria:</strong> ${qualifiedProjects.length}</p>
-    </div>
+    <h3>Summary</h3>
+    <p><strong>Total new projects found:</strong> ${totalNewProjects}</p>
+    <p><strong>New leads that meet your criteria:</strong> ${qualifiedProjects.length}</p>
     
-    ${qualifiedProjects.length > 0 ? `
-    <h3>Project Details:</h3>
-    ${qualifiedProjects.map(project => {
-        const { extractAmount } = require('../utils/dataUtils');
-        const estimatedAmt = extractAmount(project['Estimated Amt']) || 0;
-        const formattedAmt = estimatedAmt ? `$${estimatedAmt.toLocaleString()}` : 'N/A';
-        
-        return `<div class="project">
-            <h4>${project['Project Name'] || 'Unnamed Project'}</h4>
-            <p><strong>Address:</strong> ${project['Address'] || 'N/A'}</p>
-            <p><strong>Estimated Amount:</strong> ${formattedAmt}</p>
-            <p><strong>Received Date:</strong> ${project['Received Date'] || 'N/A'}</p>
-            <p><strong>Project Type:</strong> ${project['Project Type'] || 'N/A'}</p>
-        </div>`;
-    }).join('')}
-    
-    <p><strong>A detailed CSV file with all qualifying projects is attached.</strong></p>
-    ` : '<p>No projects matched your criteria this time.</p>'}
-    
-    <div class="footer">
-        <p>This email was sent automatically by your DSA Scraper system.</p>
-    </div>
+    <hr>
+    <p><small>This email was sent automatically by the DSA Scraper system.</small></p>
 </body>
 </html>`;
 
-    // Create CSV attachment if there are qualified projects
+    // Create Excel attachment if there are qualified projects
     let attachments = [];
     if (qualifiedProjects.length > 0) {
-        const csvContent = generateProjectsCSV(qualifiedProjects);
-        const filename = `dgs_${leadType}_${new Date().toISOString().split('T')[0]}.csv`;
+        const excelBuffer = generateProjectsExcel(qualifiedProjects);
+        const filename = `dgs_${leadType}_${new Date().toISOString().split('T')[0]}.xlsx`;
         const tempFilePath = path.join(__dirname, '..', 'temp', filename);
         
         // Ensure temp directory exists
@@ -141,8 +113,8 @@ This email was sent automatically by your DGS Scraper system.`;
             fs.mkdirSync(tempDir, { recursive: true });
         }
         
-        // Write CSV to temp file
-        fs.writeFileSync(tempFilePath, csvContent);
+        // Write Excel to temp file
+        fs.writeFileSync(tempFilePath, excelBuffer);
         
         // For mailgun.js, attachments need to be an array of file streams or buffers
         const fileStream = fs.createReadStream(tempFilePath);

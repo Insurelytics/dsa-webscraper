@@ -180,8 +180,8 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
         return
       }
       
-      // Send filtered projects to backend for CSV generation
-      await generateCSVFromProjects(filteredProjects, 'custom_export.csv')
+      // Send filtered projects to backend for Excel generation
+      await generateExcelFromProjects(filteredProjects, 'custom_export.xlsx')
       
     } catch (error) {
       console.error('Error with custom download:', error)
@@ -223,7 +223,7 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
     }
   }
 
-  const downloadCSVFromBackend = async (category: string, filename?: string) => {
+  const downloadExcelFromBackend = async (category: string, filename?: string) => {
     try {
       // Fetch projects first
       const response = await apiClient.getCategoryProjects(category, 10000) as CategoryResponse
@@ -234,19 +234,19 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
         return
       }
       
-      // Generate CSV from fetched projects
-      const downloadFilename = filename || `${category}_projects.csv`
-      await generateCSVFromProjects(projects, downloadFilename)
+      // Generate Excel from fetched projects
+      const downloadFilename = filename || `${category}_projects.xlsx`
+      await generateExcelFromProjects(projects, downloadFilename)
       
     } catch (error) {
-      console.error('Error downloading CSV:', error)
-      alert('Failed to download CSV. Please try again.')
+      console.error('Error downloading Excel:', error)
+      alert('Failed to download Excel. Please try again.')
     }
   }
 
-  const generateCSVFromProjects = async (projects: Project[], filename: string) => {
+  const generateExcelFromProjects = async (projects: Project[], filename: string) => {
     try {
-      const blob = await apiClient.generateCustomCSV(projects, filename)
+      const blob = await apiClient.generateCustomExcel(projects, filename)
       
       // Create blob and download
       const url = window.URL.createObjectURL(blob)
@@ -259,13 +259,13 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
       window.URL.revokeObjectURL(url)
       
     } catch (error) {
-      console.error('Error generating CSV:', error)
-      alert('Failed to generate CSV. Please try again.')
+      console.error('Error generating Excel:', error)
+      alert('Failed to generate Excel. Please try again.')
     }
   }
 
   const handleDownload = async (category: string) => {
-    await downloadCSVFromBackend(category)
+    await downloadExcelFromBackend(category)
   }
 
   if (loading) {
@@ -331,7 +331,7 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
                   onClick={() => handleDownload(category)}
                 >
                   <Download className="w-3 h-3 mr-1" />
-                  Download CSV
+                  Download Excel
                 </Button>
               </CardContent>
             </Card>
@@ -358,7 +358,7 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
               onClick={() => handleDownload('all')}
             >
               <Download className="w-3 h-3 mr-1" />
-              Download CSV
+              Download Excel
             </Button>
           </CardContent>
         </Card>
