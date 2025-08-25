@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Download, Eye, RotateCcw, TestTube, BarChart3 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { apiClient } from "@/lib/api"
 
@@ -179,7 +180,8 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
         return
       }
       
-      downloadProjectsAsCSV(filteredProjects, 'custom_export.csv')
+      // Send filtered projects to backend for CSV generation
+      await generateCSVFromProjects(filteredProjects, 'custom_export.csv')
       
     } catch (error) {
       console.error('Error with custom download:', error)
@@ -189,67 +191,7 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
     }
   }
 
-  const downloadProjectsAsCSV = (projects: Project[], filename: string) => {
-    if (projects.length === 0) return
-    
-    // Get all unique keys from all projects to create comprehensive headers
-    const allKeys = new Set<string>()
-    projects.forEach(project => {
-      Object.keys(project).forEach(key => allKeys.add(key))
-    })
-    
-    // Filter out columns that are completely empty or only contain empty strings
-    const keysWithData = Array.from(allKeys).filter(key => {
-      return projects.some(project => {
-        const value = project[key]
-        return value !== null && value !== undefined && value !== '' && String(value).trim() !== ''
-      })
-    })
-    
-    // Order the headers based on the sample CSV structure
-    const orderedHeaders = [
-      '# Of Incr', 'Address', 'Adj Est.Amt#1', 'Adj Est.Amt#2', 'Adj Est.Date#1', 'Adj Est.Date#2',
-      'Application #', 'Approval Ext. Date', 'Approved Date', 'Auto Fire Detection', 'City',
-      "Client's Notes", 'Climate Zone', 'Closed Date', 'Complete Submittal Received Date',
-      'Construction Change Document Amt', 'Contracted Amt', 'EPR Approved Date', 'Energy Efficiency',
-      'Energy Notes', 'Estimated Amt', 'File #', 'HPI', 'HPI Hours', 'HPI Points', 'Included In Plan',
-      'OPSC #', 'Office ID', 'PTN #', 'Project Class', 'Project Name', 'Project Scope', 'Project Type',
-      "Project's Sq.footage", 'Received Date', 'Required', 'Required review services', 'SB 575',
-      'Special Type', 'Special review type', 'Sprinkler System', 'Zip'
-    ]
-    
-    // Add any remaining keys that weren't in the ordered list, but only if they have data
-    const remainingKeys = keysWithData.filter(key => !orderedHeaders.includes(key))
-    const headers = [...orderedHeaders.filter(header => keysWithData.includes(header)), ...remainingKeys]
-    
-    // Create CSV content
-    const csvContent = [
-      headers.join(','),
-      ...projects.map(project => 
-        headers.map(header => {
-          const value = project[header] || ''
-          // Escape commas and quotes in CSV
-          if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
-            return `"${value.replace(/"/g, '""')}"`
-          }
-          return value
-        }).join(',')
-      )
-    ].join('\n')
-    
-    // Create and download file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob)
-      link.setAttribute('href', url)
-      link.setAttribute('download', filename)
-      link.style.visibility = 'hidden'
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-    }
-  }
+
 
   const getCategoryColor = (category: string) => {
     switch (category) {
@@ -281,9 +223,9 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
     }
   }
 
-  const handleDownload = async (category: string) => {
+  const downloadCSVFromBackend = async (category: string, filename?: string) => {
     try {
-      console.log(`Downloading ${category} projects...`)
+      // Fetch projects first
       const response = await apiClient.getCategoryProjects(category, 10000) as CategoryResponse
       const projects = response.projects
       
@@ -292,11 +234,38 @@ export default function ResultsAndFilters({ onSettingsChange, onSave }: ResultsA
         return
       }
       
-      downloadProjectsAsCSV(projects, `${category}_projects.csv`)
+      // Generate CSV from fetched projects
+      const downloadFilename = filename || `${category}_projects.csv`
+      await generateCSVFromProjects(projects, downloadFilename)
+      
     } catch (error) {
-      console.error('Error downloading projects:', error)
-      alert('Failed to download projects. Please try again.')
+      console.error('Error downloading CSV:', error)
+      alert('Failed to download CSV. Please try again.')
     }
+  }
+
+  const generateCSVFromProjects = async (projects: Project[], filename: string) => {
+    try {
+      const blob = await apiClient.generateCustomCSV(projects, filename)
+      
+      // Create blob and download
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+    } catch (error) {
+      console.error('Error generating CSV:', error)
+      alert('Failed to generate CSV. Please try again.')
+    }
+  }
+
+  const handleDownload = async (category: string) => {
+    await downloadCSVFromBackend(category)
   }
 
   if (loading) {

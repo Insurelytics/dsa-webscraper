@@ -139,6 +139,24 @@ class ApiClient {
       body: JSON.stringify(settings),
     });
   }
+
+  // CSV generation method
+  async generateCustomCSV(projects: any[], filename: string): Promise<Blob> {
+    const url = `${this.baseURL}/api/generate-csv`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ projects, filename }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    }
+
+    return response.blob();
+  }
 }
 
 export const apiClient = new ApiClient();
