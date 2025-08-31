@@ -4,7 +4,7 @@ const Mailgun = require("mailgun.js"); // mailgun.js v11.1.0
 const fs = require('fs');
 const path = require('path');
 const { generateProjectsExcel } = require('../../shared/excel-utils');
-const mailDomain = process.env.MAIL_DOMAIN || 'jacob@jacob.simplarity.ai'
+const mailDomain = 'jacob.simplarity.ai'
 
 async function sendEmail(to, subject, text, html = null, attachments = []) {
   const mailgun = new Mailgun(FormData);
@@ -16,7 +16,7 @@ async function sendEmail(to, subject, text, html = null, attachments = []) {
   });
   try {
     const messageData = {
-      from: "Jacob AI <" + mailDomain + ">",
+      from: "Jacob AI <jacob@" + mailDomain + ">",
       to: [to],
       subject: subject,
       text: text,
