@@ -90,6 +90,7 @@ async function waitForJobsToComplete(jobIds, maxWaitHours = 1) {
 
 async function processAllJobs() {
     const enabledCounties = await getEnabledCounties();
+    const pipelineStartMs = Date.now();
     const jobIds = [];
     // Use local time to match Python's datetime.now().isoformat() which uses local time
     const now = new Date();
@@ -129,7 +130,8 @@ async function processAllJobs() {
             
             // Send email with summary and qualified projects
             try {
-                await sendScheduledLeadsEmail(emails, newProjects.length, qualifiedProjects, leadType);
+                const durationMs = Date.now() - pipelineStartMs;
+                await sendScheduledLeadsEmail(emails, newProjects.length, qualifiedProjects, leadType, durationMs);
                 console.log('Email notifications sent successfully');
             } catch (emailError) {
                 console.error('Failed to send email notifications:', emailError);
@@ -271,5 +273,7 @@ async function initScheduler() {
 
 
 module.exports = {
-    initScheduler
+    initScheduler,
+    // Export for manual triggering through the normal pipeline
+    processAllJobs
 }

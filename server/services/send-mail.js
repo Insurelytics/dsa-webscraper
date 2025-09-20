@@ -54,7 +54,7 @@ function formatProjectSummary(project) {
   Project Type: ${project['Project Type'] || 'N/A'}`;
 }
 
-async function sendScheduledLeadsEmail(emailList, totalNewProjects, qualifiedProjects, leadType) {
+async function sendScheduledLeadsEmail(emailList, totalNewProjects, qualifiedProjects, leadType, durationMs = null) {
     const emails = emailList.split(',').map(email => email.trim()).filter(email => email);
     
     if (emails.length === 0) {
@@ -65,68 +65,51 @@ async function sendScheduledLeadsEmail(emailList, totalNewProjects, qualifiedPro
     const leadTypeName = leadType === 'strongLeads' ? 'Strong Leads' : 
                         leadType === 'weakLeads' ? 'Weak Leads' : 
                         leadType === 'watchlist' ? 'Watchlist' : leadType;
-    
-    const subject = `New Leads: ${qualifiedProjects.length} Projects Found that Meet your Criteria`;
-    
-    const textContent = `DSA Scraper Results
 
-Total new projects found: ${totalNewProjects}
-New projects that meet your criteria: ${qualifiedProjects.length}
-
-${qualifiedProjects.length > 0 ? `Project Details:
-${qualifiedProjects.map(formatProjectSummary).join('\n\n')}` : 'No projects matched your criteria this time.'}
-
-${qualifiedProjects.length > 0 ? 'A detailed Excel file with all qualifying projects is attached.' : ''}
-
----
-This email was sent automatically by the DSA Scraper system.`;
-
-    const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-    </style>
-</head>
-<body>
-    <h2>DSA Scraper Results</h2>
-    
-    <h3>Summary</h3>
-    <p><strong>Total new projects found:</strong> ${totalNewProjects}</p>
-    <p><strong>New leads that meet your criteria:</strong> ${qualifiedProjects.length}</p>
-    
-    <hr>
-    <p><small>This email was sent automatically by the DSA Scraper system.</small></p>
-</body>
-</html>`;
-
-    // Create Excel attachment if there are qualified projects
-    let attachments = [];
+    // Generate and persist Excel to a permanent public location
+    let downloadUrl = null;
     if (qualifiedProjects.length > 0) {
         const excelBuffer = generateProjectsExcel(qualifiedProjects);
-        const filename = `dgs_${leadType}_${new Date().toISOString().split('T')[0]}.xlsx`;
-        const tempFilePath = path.join(__dirname, '..', 'temp', filename);
-        
-        // Ensure temp directory exists
-        const tempDir = path.dirname(tempFilePath);
-        if (!fs.existsSync(tempDir)) {
-            fs.mkdirSync(tempDir, { recursive: true });
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `dgs_${leadType}_${timestamp}.xlsx`;
+        const reportsDir = path.join(__dirname, '..', 'public', 'reports');
+        const filePath = path.join(reportsDir, filename);
+
+        if (!fs.existsSync(reportsDir)) {
+            fs.mkdirSync(reportsDir, { recursive: true });
         }
-        
-        // Write Excel to temp file
-        fs.writeFileSync(tempFilePath, excelBuffer);
-        
-        // For mailgun.js, attachments need to be an array of file streams or buffers
-        const fileStream = fs.createReadStream(tempFilePath);
-        fileStream.filename = filename; // Set the filename property
-        attachments = [fileStream];
+        fs.writeFileSync(filePath, excelBuffer);
+
+        const baseUrl = process.env.PUBLIC_BASE_URL || 'http://localhost:8000';
+        downloadUrl = `${baseUrl}/public/reports/${filename}`;
+        console.log(`Report saved: ${filePath} -> ${downloadUrl}`);
     }
 
-    // Send email to each address
+    const durationText = durationMs != null ? `${Math.round(durationMs / 1000)}s` : 'n/a';
+    const subject = `Leads: ${qualifiedProjects.length} found`;
+    const textContent = `Leads summary
+
+Total new projects: ${totalNewProjects}
+Qualified: ${qualifiedProjects.length}
+Duration: ${durationText}
+${downloadUrl ? `Download: ${downloadUrl}` : 'No qualifying projects this run.'}
+
+This email was sent automatically.`;
+    const htmlContent = `<!DOCTYPE html>
+<html><body style="font-family: Arial, sans-serif; margin: 16px;">
+<h3>Leads summary</h3>
+<p><strong>Total new projects:</strong> ${totalNewProjects}</p>
+<p><strong>Qualified (${leadTypeName}):</strong> ${qualifiedProjects.length}</p>
+<p><strong>Duration:</strong> ${durationText}</p>
+${downloadUrl ? `<p><a href="${downloadUrl}">Download Excel report</a></p>` : '<p>No qualifying projects this run.</p>'}
+<hr/>
+<p style="color:#666;font-size:12px;">This email was sent automatically.</p>
+</body></html>`;
+
+    // Send email to each address (no attachments)
     const emailPromises = emails.map(async (email) => {
         try {
-            await sendEmail(email, subject, textContent, htmlContent, attachments);
+            await sendEmail(email, subject, textContent, htmlContent, []);
             console.log(`Successfully sent email to ${email}`);
         } catch (error) {
             console.error(`Failed to send email to ${email}:`, error);
@@ -134,17 +117,6 @@ This email was sent automatically by the DSA Scraper system.`;
     });
 
     await Promise.all(emailPromises);
-
-    // Clean up temp files
-    if (attachments.length > 0) {
-        attachments.forEach(attachment => {
-            try {
-                fs.unlinkSync(attachment.path);
-            } catch (error) {
-                console.error('Error cleaning up temp file:', error);
-            }
-        });
-    }
 
     console.log(`Email notifications sent to ${emails.length} recipients`);
 }

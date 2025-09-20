@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { initDatabase, db } = require('./database/init');
 const { initScheduler } = require('./services/schedule');
 
@@ -10,6 +11,9 @@ const PORT = 8000;
 // Middleware
 app.use(express.json());
 app.use(cors());
+
+// Serve permanent public files (e.g., generated reports)
+app.use('/public', express.static(path.join(__dirname, 'public')));
 
 // Import routes
 const statsRoutes = require('./routes/stats');
